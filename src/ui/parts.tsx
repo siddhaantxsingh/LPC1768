@@ -196,7 +196,7 @@ export const DcMotor = memo(function DcMotor({ angle, speed }: { angle: number; 
       <circle cx="60" cy="60" r="8" fill="#9aa09b" stroke="#5f645f" />
       <circle cx="60" cy="60" r="3" fill="#3a3d3b" />
       {Math.abs(speed) > 0.03 && (
-        <g fill="none" stroke="#7ee0a8" strokeWidth="2" strokeLinecap="round" opacity=".9">
+        <g fill="none" stroke="#ffbf5e" strokeWidth="2" strokeLinecap="round" opacity=".9">
           {speed > 0
             ? <><path d="M86 22 A48 48 0 0 1 104 46" /><path d="M104 46 l-1-7 M104 46 l-6.5-3" /></>
             : <><path d="M34 22 A48 48 0 0 0 16 46" /><path d="M16 46 l1-7 M16 46 l6.5-3" /></>}

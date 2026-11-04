@@ -72,10 +72,10 @@ export const MotorBench = memo(function MotorBench({ snap, connected }: { snap: 
       {blur > 0.05 && <ellipse cx="214" cy="168" rx="11" ry="44" fill="#fff3dd" opacity={blur * 0.45} />}
       <circle cx={mx} cy={my} r="7" fill={front ? '#1d1f20' : '#5e4214'} opacity={1 - blur * 0.7} />
       {Math.abs(sp) > 0.03 && (
-        <path d={sp > 0 ? 'M180 104 A 42 60 0 0 0 180 232' : 'M180 232 A 42 60 0 0 1 180 104'} fill="none" stroke="#3fbf7f" strokeWidth="4" strokeLinecap="round"
+        <path d={sp > 0 ? 'M180 104 A 42 60 0 0 0 180 232' : 'M180 232 A 42 60 0 0 1 180 104'} fill="none" stroke="#e8963a" strokeWidth="4" strokeLinecap="round"
           markerEnd="" />
       )}
-      {Math.abs(sp) > 0.03 && <path d={sp > 0 ? 'M180 232 l-12 -4 l8 12 z' : 'M180 104 l-12 4 l8 -12 z'} fill="#3fbf7f" />}
+      {Math.abs(sp) > 0.03 && <path d={sp > 0 ? 'M180 232 l-12 -4 l8 12 z' : 'M180 104 l-12 4 l8 -12 z'} fill="#e8963a" />}
       <text x="330" y="282" textAnchor="middle" className="mb-title">DC motor</text>
       <text x="330" y="70" textAnchor="middle" className="mb-read">{Math.round(Math.abs(sp) * 1500)} rpm · {sp > 0.02 ? 'clockwise' : sp < -0.02 ? 'anticlockwise' : 'stopped'}</text>
 
