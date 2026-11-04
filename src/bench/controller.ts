@@ -422,6 +422,7 @@ export class BenchController {
 
   // ---------- inputs ----------
   pressKey(k: number, down: boolean) { this.board.pressKey(k, down); this.poke(); }
+  setBounce(on: boolean) { this.board.bounce = on; }
   setSw2(down: boolean) { this.board.setSw2(down); this.poke(); }
   setPot(i: number, v: number) { this.board.potVolts[i] = v; this.board.checkInputs(); this.poke(); }
   sendUart(u: number, text: string) { for (const ch of text) this.board.uartReceive(u, ch.charCodeAt(0)); this.poke(); }

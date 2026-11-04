@@ -241,3 +241,44 @@ describe('board reuse between programs', () => {
     expect(vs.has(3.3)).toBe(true);
   });
 });
+
+describe('real-board safety checks', () => {
+  it('warns when a local is read before it is set', () => {
+    const r = compile({ 'main.c': 'int main(void) {\n  unsigned int i, total;\n  for (i = 0; i < 3; i++) total += i;\n  while (1);\n}\n' });
+    expect(r.ok).toBe(true);
+    expect(r.diagnostics.some(d => d.line === 3 && /total.*before it is given a value/.test(d.msg))).toBe(true);
+    expect(r.diagnostics.some(d => /'i'/.test(d.msg))).toBe(false);
+  });
+  it('uninitialised locals hold junk, like real RAM', () => {
+    const r = compile({ 'main.c': 'unsigned int seen;\nint main(void) { unsigned int x; seen = x; while (1); }\n' });
+    const b = new Board(); const s = new Session(r.out!, b); s.runOps(2000);
+    expect(s.vm.read(r.out!.globals.find(g => g.name === 'seen')!.addr, 5)).not.toBe(0);
+  });
+  it('flags Keil column-1 layout mistakes', () => {
+    const r = assemble('    AREA T, CODE, READONLY\n    ENTRY\nMOV R0, #1\n    LOOP B LOOP\n    END\n');
+    expect(r.diags.some(d => d.line === 3 && d.msg.startsWith('Keil'))).toBe(true);
+    expect(r.diags.some(d => d.line === 4 && d.msg.startsWith('Keil'))).toBe(true);
+  });
+  it('debounced EINT2 solution advances once per press even with switch bounce', () => {
+    const { b, s } = boot('ex/e10x3.c', { CNA: 'CNA5', CNB: 'CNB1' });
+    b.bounce = true;
+    const duties: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      b.snapshot(0); s.runOps(300000); duties.push(+b.snapshot(0).dc.duty.toFixed(1));
+      b.setSw2(true); s.runOps(20000); b.setSw2(false); s.runOps(20000);
+    }
+    expect(duties).toEqual([0, 0.3, 0.6, 1]);
+  });
+  it('timer prescalers are computed from the real clock (100 MHz and 12 MHz boards)', () => {
+    const pr = (cclk: number | null) => {
+      let src = rd('ex/e5x4.c');
+      if (cclk) src = src.replace('SystemCoreClockUpdate();', `SystemCoreClockUpdate();\n    SystemCoreClock = ${cclk};`);
+      const r = compile({ 'main.c': src });
+      const b = new Board(); const s = new Session(r.out!, b);
+      s.runOps(20000);
+      return b.timers[0].pr;
+    };
+    expect(pr(null)).toBe(24);       // 100 MHz, PCLK 25 MHz -> 1 us ticks
+    expect(pr(12000000)).toBe(2);    // 12 MHz,  PCLK 3 MHz  -> still 1 us ticks
+  });
+});

@@ -5,7 +5,7 @@
 
 volatile unsigned int state = 0;
 
-unsigned int k;
+volatile unsigned int k;   // volatile: keeps delay loops at any optimisation level
 
 // Drive one coil LOW (energised through the ULN2803), the other three HIGH.
 // FIOSET/FIOCLR touch only P0.4-P0.7, so the DC-motor pins are left alone.
@@ -30,8 +30,31 @@ void step_acw(void)
     for (i = 0; i < 4; i++) { v >>= 1; coil(v); }
 }
 
+
+// Peripheral clock read from the chip (PCLKSEL: 00 = CCLK/4, 01 = CCLK, 10 = CCLK/2, 11 = CCLK/8)
+unsigned int pclk(unsigned int pclksel, unsigned int shift)
+{
+    unsigned int sel = (pclksel >> shift) & 3;
+    return SystemCoreClock / (sel == 0 ? 4 : sel == 1 ? 1 : sel == 2 ? 2 : 8);
+}
+
+// A real switch bounces for a few milliseconds and would fire several interrupts per
+// press. Timer 1 runs as a free millisecond clock; presses closer than 50 ms are ignored.
+unsigned int last_press = 0xFFFF0000;
+
+int debounced(void)
+{
+    unsigned int now = LPC_TIM1->TC;
+    if (now - last_press < 50) return 0;
+    last_press = now;
+    return 1;
+}
+
 void eint2_init(void)
 {
+    LPC_TIM1->TCR = 0x02;                                    // millisecond clock for debouncing
+    LPC_TIM1->PR  = pclk(LPC_SC->PCLKSEL0, 4) / 1000 - 1;
+    LPC_TIM1->TCR = 0x01;
     LPC_PINCON->PINSEL4 &= ~(3 << 24);
     LPC_PINCON->PINSEL4 |=  (1 << 24);          // P2.12 = EINT2 (SW2)
     LPC_SC->EXTINT   = 1 << 2;
@@ -42,6 +65,8 @@ void eint2_init(void)
 
 void EINT2_IRQHandler(void)
 {
+    LPC_SC->EXTINT = 1 << 2;                    // clear the interrupt first
+    if (!debounced()) return;                   // a bounce of the same press: ignore it
     state = (state + 1) % 5;
     LPC_SC->EXTINT = 1 << 2;
 }

@@ -2,7 +2,7 @@
 // HIGH for 3 delay units, LOW for 1 unit.
 #include <LPC17xx.h>
 
-unsigned int d;
+volatile unsigned int d;   // volatile: keeps delay loops at any optimisation level
 
 int main(void)
 {

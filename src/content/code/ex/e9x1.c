@@ -2,7 +2,7 @@
 // 1.8 deg per step -> 100 steps = 25 groups of 4 steps.
 #include <LPC17xx.h>
 
-unsigned int k;
+volatile unsigned int k;   // volatile: keeps delay loops at any optimisation level
 
 void anti_clock_wise(void)
 {

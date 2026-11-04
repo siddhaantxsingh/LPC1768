@@ -364,6 +364,37 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const z0 = await B('c.cpu.z');
   await p.click('.flag[aria-label="zero flag"]'); await sleep(100);
   check('asm inputs: flag flips on click', (await B('c.cpu.z')) !== z0);
+
+  // ---------------- real-board safety features ----------------
+  await p.goto(BASE + '#/exp/10/x3'); await sleep(500);
+  await p.click('.panel-head .btn >> text=Bounce'); await sleep(100);
+  check('safety: Bounce toggle turns on switch bounce', (await B('b.bounce')) === true);
+  await p.click('.panel-head .btn >> text=Bounce'); await sleep(100);
+  check('safety: Bounce toggle turns it off', (await B('b.bounce')) === false);
+  if (!(await p.isVisible('.board-tips'))) await p.click('.rail-btn');
+  await sleep(200);
+  const tipsC = await p.textContent('.board-tips');
+  check('safety: real-board checklist for C (debounce + clock)', tipsC.includes('debounced in software') && tipsC.includes('SystemCoreClock'), tipsC.slice(0, 120));
+  await p.goto(BASE + '#/exp/4/x4'); await sleep(500);
+  const tipsA = await p.textContent('.board-tips');
+  check('safety: real-board checklist for assembly (stack set up)', tipsA.includes('Sets up the stack pointer itself'), tipsA.slice(0, 120));
+  // warnings while editing
+  await p.goto(BASE + '#/play/c'); await sleep(500);
+  await p.click('.cm-content'); await p.keyboard.press('Control+End');
+  await p.keyboard.type('\nint sum3(void) { int t; t += 3; return t; }');
+  await p.click('.toolbar .btn.primary'); await sleep(400);
+  await p.click('.dock-tabs >> text=Problems'); await sleep(150);
+  check('safety: warns about a variable used before it is set', (await p.textContent('.problems')).includes("'t' is used before it is given a value"));
+  await p.click('.toolbar .btn[title="Stop"]').catch(() => {});
+  p.once('dialog', d => d.accept());
+  await p.click('.files .btn >> text=Revert'); await sleep(200);
+  await p.goto(BASE + '#/play/asm'); await sleep(500);
+  await p.click('.cm-content'); await p.keyboard.press('Control+Home');
+  await p.keyboard.type('MOV R5, #1\n');
+  await p.click('.toolbar .btn.primary'); await sleep(300);
+  check('safety: Keil column-1 warning in assembly', (await p.textContent('.problems')).includes('Keil'));
+  p.once('dialog', d => d.accept());
+  await p.click('.files .btn >> text=Revert'); await sleep(200);
   // ---------------- medium width rail toggle ----------------
   await p.setViewportSize({ width: 1000, height: 800 });
   await p.goto(BASE + '#/exp/6/p1'); await sleep(400);

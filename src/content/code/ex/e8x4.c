@@ -3,15 +3,26 @@
 #include <LPC17xx.h>
 #include "AN_LCD.h"
 
+// Peripheral clock of a timer/UART, read from the chip so all timing stays correct
+// whatever clock the board actually runs at. PCLKSEL field: 00 = CCLK/4, 01 = CCLK,
+// 10 = CCLK/2, 11 = CCLK/8. (SystemCoreClock is set by SystemCoreClockUpdate().)
+unsigned int pclk(unsigned int pclksel, unsigned int shift)
+{
+    unsigned int sel = (pclksel >> shift) & 3;
+    return SystemCoreClock / (sel == 0 ? 4 : sel == 1 ? 1 : sel == 2 ? 2 : 8);
+}
+
 void uart3_init(void)
 {
+    unsigned int divisor;
     LPC_SC->PCONP |= (1 << 25);
     LPC_PINCON->PINSEL0 &= ~0x0F;
     LPC_PINCON->PINSEL0 |=  0x0A;               // P0.0 TXD3, P0.1 RXD3
-    LPC_UART3->LCR = 0x83;
-    LPC_UART3->DLM = 0x00;
-    LPC_UART3->DLL = 0x13;
-    LPC_UART3->LCR = 0x03;
+    divisor = pclk(LPC_SC->PCLKSEL1, 18) / (16 * 9600);   // 9600 baud at any clock
+    LPC_UART3->LCR = 0x83;                      // DLAB = 1
+    LPC_UART3->DLM = divisor >> 8;
+    LPC_UART3->DLL = divisor & 0xFF;
+    LPC_UART3->LCR = 0x03;                      // 8N1, DLAB = 0
     LPC_UART3->FCR = 0x07;
 }
 

@@ -1,7 +1,7 @@
 // Ring counter on LD2-LD9: one LED "walks" across the bank
 #include <LPC17xx.h>
 
-unsigned int i;
+volatile unsigned int i;   // volatile: keeps delay loops at any optimisation level
 
 int main(void)
 {

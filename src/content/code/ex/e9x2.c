@@ -2,7 +2,7 @@
 // Low (30%) -> medium (60%) -> high (100%) -> repeat, about 2 s each.
 #include <LPC17xx.h>
 
-unsigned int d;
+volatile unsigned int d;   // volatile: keeps delay loops at any optimisation level
 
 void run_at(unsigned int duty, unsigned int periods)   // duty in percent
 {

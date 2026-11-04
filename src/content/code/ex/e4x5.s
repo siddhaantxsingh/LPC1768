@@ -2,6 +2,7 @@
 ; 4789 + 3456 = 8245  (result keeps a carry digit: 0x00008245)
     AREA EX4_5, CODE, READONLY
     ENTRY
+        LDR   SP, =0x40008000   ; stack at the top of RAM (a Keil startup file normally does this)
         LDR   R2, =BCD1
         LDR   R0, [R2]
         LDR   R1, [R2, #4]

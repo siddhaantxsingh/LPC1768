@@ -1,7 +1,7 @@
 // 4-bit hex counter (0 - F) on LD2-LD5
 #include <LPC17xx.h>
 
-unsigned int i;
+volatile unsigned int i;   // volatile: keeps delay loops at any optimisation level
 
 int main(void)
 {

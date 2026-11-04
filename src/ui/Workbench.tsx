@@ -66,6 +66,8 @@ export function Workbench({ expNo, progId, playground }: Props) {
   const [split, setSplit] = useState<number>(() => pref('split', 0.42));
   const [warnRun, setWarnRun] = useState<string[] | null>(null);
   const [showMotors, setShowMotors] = useState<boolean>(() => pref('motors', true));
+  const [bounce, setBounce] = useState<boolean>(() => pref('bounce', false));
+  useEffect(() => { ctl.setBounce(bounce); }, [bounce, ctl]);
   const needsScope = !!prog && (!!prog.scope || !!prog.devices?.some(d => d === 'scope' || d === 'dac'));
   const [scopeOn, setScopeOn] = useState<boolean>(needsScope);
   useEffect(() => { setScopeOn(needsScope); }, [needsScope, storeId]);
@@ -451,6 +453,7 @@ export function Workbench({ expNo, progId, playground }: Props) {
             </div>
           )}
           {lang === 'c' && <button className="btn sm ghost" aria-pressed={showMotors} onClick={() => setShowMotors(m => { setPref('motors', !m); return !m; })} title="Show or hide the stepper and DC motor">Motors</button>}
+          {lang === 'c' && <button className="btn sm ghost" aria-pressed={bounce} onClick={() => setBounce(b => { setPref('bounce', !b); return !b; })} title="Make SW2 and the keys bounce for ~2.5 ms like real switch contacts, to check your code handles it">Bounce</button>}
           {lang === 'c' && <button className="btn sm ghost" aria-pressed={scopeOn} onClick={() => setScopeOn(o => !o)} title="Show or hide the oscilloscope under the board">Scope</button>}
           {lang === 'c' && <button className="btn sm ghost icon hide-sm" aria-pressed={boardMax} onClick={() => setBoardMax(m => !m)} title={boardMax ? 'Show the code again' : 'Give the board the whole width'}><IFocus /></button>}
           {lang === 'asm' && st.asm && <span className="meta">PC 0x{(st.asm.regs[15] >>> 0).toString(16).toUpperCase().padStart(8, '0')}</span>}
@@ -510,6 +513,41 @@ export function Workbench({ expNo, progId, playground }: Props) {
   );
 }
 
+/** Advice for running this example on the physical board, derived from its code. */
+function realBoardTips(prog: Program, code: Record<string, string>): string[] {
+  const src = Object.values(code).join('\n');
+  const tips: string[] = [];
+  if (prog.lang === 'asm') {
+    tips.push('In Keil, create a project for an ARM7 device (e.g. NXP LPC2148), add this file, build, then use Debug → Start/Stop to run it in the simulator.');
+    tips.push('Labels start in column 1; instructions and directives must be indented. The editor here warns you if they are not.');
+    const usesStack = /\b(STMFD|LDMFD|STMDB|LDMIA\s+SP|PUSH|POP)\b/i.test(src) || /\bSP!/i.test(src);
+    if (usesStack && /LDR\s+SP\s*,/i.test(src)) tips.push('Sets up the stack pointer itself, so it works with or without a startup file.');
+    else if (usesStack) tips.push('Uses the stack: keep the startup file Keil offers (it sets SP), or add  LDR SP, =0x40008000  as the first instruction.');
+    tips.push('Check results in the Registers window and in Memory 1 (type the address, e.g. 0x40000000).');
+    return tips;
+  }
+  tips.push('In Keil, create an LPC1768 project and keep startup_LPC17xx.s and system_LPC17xx.c. Then add ' + Object.keys(code).filter(f => f.endsWith('.c')).join(', ') + '.');
+  if (Object.keys(code).some(f => f.endsWith('.h'))) tips.push('Add ' + Object.keys(code).filter(f => f !== 'main.c').join(' and ') + ' to the project too (Project → Add Existing Files).');
+  if (/for\s*\([^;]*;[^;]*;[^)]*\)\s*;/.test(src)) {
+    tips.push('Delay loops run much faster on the real 100 MHz chip than here. If the LEDs look always on, or the stepper hums instead of turning, make the loop counts bigger.');
+    if (!/volatile/.test(src)) tips.push('Declare delay-loop counters volatile (e.g. volatile unsigned int i;) so an optimising compiler cannot delete the loops.');
+  }
+  if (/pclk\s*\(/.test(src)) tips.push('Timer, PWM and baud-rate settings are computed from SystemCoreClock, so tones, waveforms and serial speed stay correct at whatever clock the board runs.');
+  if (/EINT2_IRQHandler/.test(src)) {
+    tips.push(/debounced\s*\(/.test(src)
+      ? 'SW2 is debounced in software (50 ms), so one press counts once even though real switches bounce.'
+      : 'Real switches bounce, so one press of SW2 can fire several interrupts. Turn on Bounce above the board to see this here, and ignore presses closer than ~50 ms in the handler.');
+  }
+  if (prog.devices?.includes('keypad')) tips.push('Real keys bounce too. Wait for the key to be released, or add a short delay after a press, to avoid double counts.');
+  if (/DLL\s*=\s*0x13/i.test(src)) tips.push("The manual's DLL = 0x13 gives 9600 baud only if the UART clock is 3 MHz; at 25 MHz it is about 82 000 baud. If the PC terminal shows garbage, set DLL = PCLK / (16 × 9600).");
+  else if (/UART3/.test(src)) tips.push('Set the PC terminal (HyperTerminal / PuTTY) to 9600 baud, 8 data bits, no parity, 1 stop bit, and short JP7 and JP8.');
+  if (prog.devices?.includes('lcd')) tips.push('If the LCD shows a row of blocks or nothing, turn the LCD CONTRAST pot and check that JP16 is shorted.');
+  if (prog.devices?.includes('stepper')) tips.push('If the stepper only vibrates, increase the delay between steps: a real motor cannot follow very fast steps.');
+  if (prog.devices?.includes('adc')) tips.push('Short JP18 on pins 2-3 so POT4 reaches AD0.4 (P1.30).');
+  if (prog.devices?.includes('dac')) tips.push('Open JP5 so the LCD does not load P0.26, and measure at TP8 against ground.');
+  return tips;
+}
+
 function ReqList({ requirement, wiring }: { requirement: Requirement; wiring: Wiring }) {
   const items: [string, boolean][] = [
     ...requirement.cables.map(([h, so]) => [`FRC cable ${h} → ${so}`, wiring.cables[h] === so] as [string, boolean]),
@@ -539,6 +577,8 @@ function Brief({ prog, requirement, missingNow, onWire }: { prog: Program; requi
         </>
       )}
       {prog.output && <><h3>Expected output</h3><div className="callout out">{prog.output}</div></>}
+      <h3>On the real board</h3>
+      <ul className="board-tips">{realBoardTips(prog, prog.files).map((t, i) => <li key={i}>{t}</li>)}</ul>
       {prog.tryIt && <><h3>Try it</h3>{prog.tryIt.map((t, i) => <div key={i} className="callout tip">{t}</div>)}</>}
       {prog.notes && <><h3>Notes</h3>{prog.notes.map((n, i) => <div key={i} className="callout note">{n}</div>)}</>}
     </div>

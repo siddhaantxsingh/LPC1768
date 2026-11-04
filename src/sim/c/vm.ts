@@ -108,6 +108,10 @@ export class VM {
     this.ramDv = new DataView(this.ram);
     this.ramU8 = new Uint8Array(this.ram);
     this.ramU8.set(opts.ramInit);
+    // Above the globals, RAM holds whatever was there before (as on the real chip), so an
+    // uninitialised local variable gets junk instead of a convenient 0.
+    let seed = 0x2545f491;
+    for (let i = opts.globalsEnd - RAM_BASE; i < RAM_SIZE; i++) { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; this.ramU8[i] = seed >>> 24; }
     this.globalsEnd = opts.globalsEnd;
     this.bus = opts.bus;
     this.enter(opts.entry, [], this.code.length - 1, -1);

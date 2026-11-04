@@ -1,6 +1,7 @@
 ; Factorial using a recursive subroutine and the stack
     AREA EX4_4, CODE, READONLY
     ENTRY
+        LDR   SP, =0x40008000   ; stack at the top of RAM (a Keil startup file normally does this)
         LDR   R1, =N
         LDR   R0, [R1]
         BL    FACT              ; R0 = N!

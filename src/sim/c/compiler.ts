@@ -25,7 +25,7 @@ export interface CompileOutput {
 export interface Diagnostic { file: string; line: number; col?: number; msg: string; severity: 'error' | 'warning' }
 
 type Sym =
-  | { kind: 'local'; off: number; type: CType }
+  | { kind: 'local'; off: number; type: CType; assigned?: boolean; name?: string; warned?: boolean }
   | { kind: 'global'; addr: number; type: CType }
   | { kind: 'func'; index: number; type: Extract<CType, { k: 'func' }> }
   | { kind: 'const'; value: number };
@@ -502,7 +502,7 @@ class Compiler {
     }
     if (d.type.k === 'arr' && d.type.len === null) this.err(`Array '${d.name}' needs a size`, d);
     const off = this.allocLocal(d.type);
-    this.scopes[this.scopes.length - 1].set(d.name, { kind: 'local', off, type: d.type });
+    this.scopes[this.scopes.length - 1].set(d.name, { kind: 'local', off, type: d.type, assigned: !!d.init || !isScalar(d.type), name: d.name });
     if (!d.init) return;
     this.stmtMark(d);
     this.localInit(off, d.type, d.init, d);
@@ -762,6 +762,7 @@ class Compiler {
           if (s.kind === 'local') this.emit(Op.LADDR, s.off); else this.emit(Op.PUSH, s.addr | 0);
           return s.type.k === 'arr' ? ptr(s.type.of) : s.type; // struct values are represented by address
         }
+        if (s.kind === 'local') this.checkInit(s, e);
         this.lvLoad(s.kind === 'local' ? { kind: 'local', off: s.off, type: s.type } : { kind: 'global', addr: s.addr, type: s.type });
         return s.type;
       }
@@ -826,6 +827,7 @@ class Compiler {
           const s = this.lookup(e.a.name);
           if (s?.kind === 'func') { this.emit(Op.PUSH, s.index); return ptr(s.type); }
         }
+        this.markAssigned(e.a); // the address may be used to fill it in
         const lv = this.lval(e.a);
         this.lvAddr(lv);
         return ptr(lv.type);
@@ -992,11 +994,14 @@ class Compiler {
       const rt = this.expr(e.b);
       this.checkAssignTypes(lt, rt, e);
       this.convert(rt, lt, e.b);
+      this.markAssigned(e.a);
       if (!discard) this.emit(Op.DUP);
       if (lv.kind === 'local') this.emit(Op.LSTORE, mk, lv.off); else this.emit(Op.GSTORE, mk, lv.addr | 0);
       return discard ? this.markDiscard() : lt;
     }
-    // compound
+    // compound: reads the old value first
+    this.checkInitExpr(e.a);
+    this.markAssigned(e.a);
     const bop = e.op.slice(0, -1);
     if (lv.kind === 'addr') this.emit(Op.DUP);
     this.lvLoad(lv);
@@ -1043,9 +1048,28 @@ class Compiler {
     return null;
   }
 
+  /** Warn once when a local scalar is read before anything is stored in it. */
+  checkInit(s: Sym, at: { file: string; line: number }) {
+    if (s.kind !== 'local' || s.assigned !== false || s.warned) return;
+    s.warned = true;
+    this.warn(`'${s.name}' is used before it is given a value. On the real board it starts with whatever was left in memory, so initialise it (e.g. ${s.name} = 0).`, at);
+  }
+  checkInitExpr(e: Expr) {
+    if (e.t !== 'id') return;
+    const s = this.lookup(e.name);
+    if (s) this.checkInit(s, e);
+  }
+  markAssigned(e: Expr) {
+    if (e.t !== 'id') return;
+    const s = this.lookup(e.name);
+    if (s && s.kind === 'local') s.assigned = true;
+  }
+
   markDiscard(): CType { return { k: 'void', __discarded: true } as any; }
 
   incdec(e: Extract<Expr, { t: 'pre' | 'post' }>, discard: boolean): CType {
+    this.checkInitExpr(e.a);
+    this.markAssigned(e.a);
     const lv = this.lval(e.a);
     const t = lv.type;
     if (!isScalar(t)) this.err(`'${e.op}' needs a numeric or pointer variable`, e);

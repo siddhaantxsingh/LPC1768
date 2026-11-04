@@ -166,6 +166,10 @@ export function assemble(source: string): AsmResult {
       const m2 = /^([^\s,]+)(?:\s+(.*))?$/.exec(rest);
       if (m2) { first = m2[1]; rest = (m2[2] ?? '').trim(); } else { first = ''; rest = ''; }
     }
+    // Keil armasm reads anything in column 1 as a label, so instructions must be indented
+    const startsCol1 = /^[^\s;]/.test(raw0);
+    if (label && !startsCol1) diags.push({ line: i + 1, msg: `Keil: label '${label}' must start in column 1 (no spaces before it); indented, armasm reads it as an instruction.`, severity: 'warning' });
+    if (!label && first && startsCol1) diags.push({ line: i + 1, msg: `Keil: '${first}' starts in column 1, where armasm expects a label. Indent instructions and directives with a space or tab.`, severity: 'warning' });
     stmts.push({ line: i + 1, label, mn: first, args: rest, raw: raw0 });
   });
 

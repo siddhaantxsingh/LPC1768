@@ -494,11 +494,23 @@ export class Board implements Bus {
   }
 
   // ---------------- user inputs ----------------
-  pressKey(k: number, down: boolean) {
-    if (down) this.keys.add(k); else this.keys.delete(k);
+  /** When on, a press or release chatters for ~2.5 ms like real contacts. */
+  bounce = false;
+  private pendingInputs: { t: number; fn: () => void }[] = [];
+  private bounceInput(set: (v: boolean) => void, final: boolean) {
+    set(final);
     this.checkInputs();
+    if (!this.bounce) return;
+    const t = this.ns();
+    [0.3, 0.7, 1.2, 1.9, 2.6].forEach((ms, i) => {
+      const v = i % 2 === 0 ? !final : final;
+      this.pendingInputs.push({ t: t + ms * 1e6, fn: () => set(v) });
+    });
   }
-  setSw2(down: boolean) { this.sw2 = down; this.checkInputs(); }
+  pressKey(k: number, down: boolean) {
+    this.bounceInput(v => { if (v) this.keys.add(k); else this.keys.delete(k); }, down);
+  }
+  setSw2(down: boolean) { this.bounceInput(v => { this.sw2 = v; }, down); }
   /** A character typed in the terminal: it reaches the RX FIFO one character-time later, like a real serial line. */
   uartReceive(u: number, ch: number) {
     const ua = this.uarts[u];
@@ -607,6 +619,12 @@ export class Board implements Bus {
         if (this.systick.ctrl & 2) { this.systick.pending = true; this.flagIrq(); }
       }
     }
+    // switch bounce
+    if (this.pendingInputs.length) {
+      let any = false;
+      this.pendingInputs = this.pendingInputs.filter(p => { if (p.t <= t) { p.fn(); any = true; return false; } return true; });
+      if (any) this.checkInputs();
+    }
     // uart tx completion
     for (let u = 0; u < 4; u++) {
       const ua = this.uarts[u];
@@ -653,6 +671,7 @@ export class Board implements Bus {
       if (ua.rxLine.length) best = Math.min(best, Math.max(0, ua.rxNextAt - t));
     });
     if (this.adc.convEndNs >= 0 && this.nvicEnabled.has(22)) best = Math.min(best, Math.max(0, this.adc.convEndNs - t));
+    for (const pi of this.pendingInputs) best = Math.min(best, Math.max(0, pi.t - t));
     return best;
   }
 

@@ -91,6 +91,7 @@ to every exercise question, and a simulated **ALS-SDA-ARMCTXM3-01** trainer boar
 | 📈 | **Oscilloscope** | Two channels with trigger, frequency, duty-cycle and voltage readings. Opens under the board for the waveform questions (PWM, DAC). |
 | ⌨️ | **Your own inputs** | In the assembly experiments, click any register, data-memory word or flag and type a value (`25`, `-7`, `0x1F`, `'A'`). Values set before the first instruction are kept as inputs for every run. |
 | 🧪 | **Your own C code** | The *Blank C project* scratchpad runs any C you write on the board: wire the cables, build and run. |
+| 🛡️ | **Real-board safety** | Exercise timing (delays, PWM, DAC, baud rate) is computed from `SystemCoreClock`, so it is right at any board clock; switch interrupts are debounced; delay counters are `volatile`. The compiler warns about variables used before they are set, the assembler about Keil's column-1 rules, a *Bounce* switch simulates real contact bounce, and every example has an *On the real board* checklist. |
 | 🐞 | **Debugger** | Breakpoints, step over/into/out, live variables, plain-language errors pointing at the line, and runtime faults such as bad pointers or divide by zero. |
 | 🔊 | **Sound** | Buzzer tones, relay clicks, a faint motor hum, and a "listen to channel A" probe speaker. |
 | 📴 | **Offline + installable** | A service worker caches the whole app on the first visit; it can be installed like an app. |
@@ -434,7 +435,7 @@ tests/
   so the manual's delay loops look the way they do on the bench. Timers, PWM, ADC, DAC and UART run on
   accurate (simulated) time.
 - **Not simulated:** Ethernet, USB, CAN, I2C, SPI, RS485, the graphic LCD, RTC, watchdog and DMA.
-- **Idealised:** no switch bounce, a forgiving LCD controller, ideal motors (no stall), and the UART baud
+- **Idealised:** switch bounce is off unless you turn on *Bounce*; a forgiving LCD controller, ideal motors (no stall), and the UART baud
   rate is not checked against the PC.
 - **C subset:** no function pointers, designated initialisers or struct-by-value arguments.
 - **Assembly:** ARM state only, with no Thumb, interrupts or processor modes.

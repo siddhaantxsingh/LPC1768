@@ -3,6 +3,7 @@
 ; A x B = AL*BL + (AL*BH + AH*BL) << 32 + AH*BH << 64
     AREA EX4_3, CODE, READONLY
     ENTRY
+        LDR   SP, =0x40008000   ; stack at the top of RAM (a Keil startup file normally does this)
         LDR   R0, =A
         LDMIA R0, {R0-R3}       ; R0 = AL, R1 = AH, R2 = BL, R3 = BH
         BL    MUL64

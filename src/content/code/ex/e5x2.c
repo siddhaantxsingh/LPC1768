@@ -2,7 +2,7 @@
 // 00000000 -> 00000001 -> 00000011 -> ... -> 11111111 -> 11111110 -> ... -> 00000000
 #include <LPC17xx.h>
 
-unsigned int i;
+volatile unsigned int i;   // volatile: keeps delay loops at any optimisation level
 
 int main(void)
 {

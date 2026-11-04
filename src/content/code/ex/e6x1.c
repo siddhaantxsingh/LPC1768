@@ -1,7 +1,7 @@
 // Flash "ECE" on the 7-segment display: show it, blank it, repeat.
 #include <LPC17xx.h>
 
-unsigned int d;
+volatile unsigned int d;   // volatile: keeps delay loops at any optimisation level
 
 void show(unsigned int code, unsigned int digit)    // digit 0 = rightmost
 {
