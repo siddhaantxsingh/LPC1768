@@ -3,8 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f2efe8" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0e0f0e" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0e0f0e" />
     <meta name="description" content="A browser-based LPC1768 and ARM7 bench for the ECE 3143 Microcontrollers & Embedded Systems lab: every manual program and exercise, a C compiler, an ARM assembler, and a simulated trainer board." />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="manifest" href="./manifest.webmanifest" />
@@ -13,8 +12,8 @@
     <script>
       try {
         var t = localStorage.getItem('bench:theme');
-        if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
-      } catch (e) {}
+        document.documentElement.dataset.theme = (t === 'light' || t === 'dark') ? t : 'dark';
+      } catch (e) { document.documentElement.dataset.theme = 'dark'; }
     </script>
   </head>
   <body>

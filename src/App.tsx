@@ -8,13 +8,10 @@ import { audio } from './bench/audio';
 
 type Theme = 'light' | 'dark';
 
-function systemTheme(): Theme {
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
 export function App() {
   const route = useRoute();
-  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || systemTheme());
+  // dark by default; the light/dark switch remembers the visitor's own choice
+  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || 'dark');
   const [muted, setMuted] = useState(audio.muted);
   const [help, setHelp] = useState(false);
 
