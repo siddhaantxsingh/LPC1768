@@ -55,8 +55,17 @@ export function App() {
         <button className="icon-btn" onClick={toggleMute} aria-pressed={!muted} title={muted ? 'Sound is off — turn on to hear the buzzer and relay' : 'Sound on'} aria-label="Toggle sound">
           {muted ? <IMute /> : <ISound />}
         </button>
-        <button className="icon-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Switch theme" aria-label="Switch theme">
-          {theme === 'dark' ? <ISun /> : <IMoon />}
+        <button
+          className="theme-switch"
+          role="switch"
+          aria-checked={theme === 'dark'}
+          aria-label="Dark mode"
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        >
+          <span className="ts-icon ts-sun"><ISun /></span>
+          <span className="ts-icon ts-moon"><IMoon /></span>
+          <span className="ts-knob" />
         </button>
         <button className="icon-btn" onClick={() => setHelp(true)} title="Keyboard shortcuts (?)" aria-label="Help"><IHelp /></button>
       </header>
