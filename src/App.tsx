@@ -5,6 +5,7 @@ import { Home } from './ui/Home';
 const Workbench = lazy(() => import('./ui/Workbench').then(m => ({ default: m.Workbench })));
 import { ChipMark, IChevron, IHelp, IMoon, IMute, ISound, ISun } from './ui/icons';
 import { audio } from './bench/audio';
+import { trackPage } from './bench/analytics';
 
 type Theme = 'light' | 'dark';
 
@@ -25,6 +26,9 @@ export function App() {
   useEffect(() => {
     const exp = route.page === 'exp' ? EXPERIMENTS.find(e => e.no === route.exp) : null;
     document.title = exp ? `Exp ${exp.no} · ${exp.short} — Bench` : route.page === 'play' ? 'Scratchpad — Bench' : 'Bench — LPC1768 & ARM7 lab';
+    // one page view per route, e.g. /exp/5/p1, /play/c, /
+    const path = route.page === 'exp' ? `/exp/${route.exp}/${route.prog}` : route.page === 'play' ? `/play/${route.lang}` : '/';
+    trackPage(path, document.title);
   }, [route]);
 
   useEffect(() => {

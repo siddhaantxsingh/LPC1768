@@ -14,6 +14,7 @@ import {
   ICheck, IClose, ICopy, IDownload, IError, IFocus, IInfo, IPanel, IPause, IPlay, IPlug, IPlus, IReset, IStepInto, IStepOut, IStepOver, IStop, IUndo, IWarn, ITrash, IChevron,
 } from './icons';
 import { audio } from '../bench/audio';
+import { trackEvent } from '../bench/analytics';
 
 interface Props { expNo?: number; progId?: string; playground?: 'c' | 'asm' }
 
@@ -129,6 +130,8 @@ export function Workbench({ expNo, progId, playground }: Props) {
 
   // ---------- commands ----------
   const preRun = () => {
+    // usage: which examples people actually run (once per example per visit)
+    trackEvent(`run/${storeId}`, `Run · ${exp ? `Exp ${exp.no} ${prog?.kind === 'exercise' ? 'E' : 'P'}${prog?.no} ${prog?.title}` : `Scratchpad ${lang}`}`);
     if (lang !== 'c') return;
     const req = prog ? requirementFor(prog) : null;
     const miss = req ? missing(wiringRef.current, req) : [];
