@@ -953,3 +953,17 @@ kbd {
 .rail-head h1 { font-family: var(--display); font-weight: 700; font-stretch: 110%; font-size: 23px; letter-spacing: -.025em; line-height: 1.12; }
 .modal h2 { font-family: var(--display); font-weight: 700; font-stretch: 112%; letter-spacing: -.02em; }
 .hero .cta .btn { font-family: var(--display); font-weight: 600; letter-spacing: -.005em; }
+
+
+/* author credit: quiet, small, always in the same place */
+.credit {
+  font: 500 11px/1 var(--mono); letter-spacing: .02em; color: var(--faint);
+  padding: 6px 10px; border-radius: 99px; border: 1px solid var(--line); white-space: nowrap;
+  margin-right: 4px; user-select: none;
+}
+.credit b { font-weight: 600; color: var(--ink-2); }
+.credit-foot { font: 500 11.5px var(--mono); color: var(--faint); }
+.credit-foot b { color: var(--accent); font-weight: 600; }
+.credit-rail { display: none; padding: 18px 20px 26px; font: 500 11px var(--mono); color: var(--faint); border-top: 1px solid var(--line); }
+.credit-rail b { color: var(--ink-2); font-weight: 600; }
+@media (max-width: 900px) { .credit { display: none; } .credit-rail { display: block; } }

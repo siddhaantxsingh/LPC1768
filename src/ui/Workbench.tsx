@@ -68,6 +68,15 @@ export function Workbench({ expNo, progId, playground }: Props) {
   const needsScope = !!prog && (!!prog.scope || !!prog.devices?.some(d => d === 'scope' || d === 'dac'));
   const [scopeOn, setScopeOn] = useState<boolean>(needsScope);
   useEffect(() => { setScopeOn(needsScope); }, [needsScope, storeId]);
+  // the connections menu closes on any click outside it, or Esc
+  useEffect(() => {
+    if (!connOpen) return;
+    const down = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest?.('.conn-menu')) setConnOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setConnOpen(false); };
+    window.addEventListener('mousedown', down);
+    window.addEventListener('keydown', key);
+    return () => { window.removeEventListener('mousedown', down); window.removeEventListener('keydown', key); };
+  }, [connOpen]);
   const [pressed, setPressed] = useState<Set<number>>(new Set());
   const [sw2, setSw2] = useState(false);
   const [pots, setPots] = useState<number[]>([1.65, 1.2]);
@@ -319,6 +328,7 @@ export function Workbench({ expNo, progId, playground }: Props) {
               ))}
             </nav>
             {prog && <Brief prog={prog} requirement={requirement} missingNow={missingNow} onWire={connectForMe} />}
+            <div className="credit-rail">made by <b>Siddhant Singh</b></div>
           </>
         ) : (
           <div className="rail-head">

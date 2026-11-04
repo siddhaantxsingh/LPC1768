@@ -158,6 +158,7 @@ export function Home() {
         <footer className="home-foot">
           <span>An unofficial study companion for the ECE 3143 lab manual. Programs follow the manual; corrections are flagged in each program's notes.</span>
           <span>Press <kbd>?</kbd> for shortcuts</span>
+          <span className="credit-foot">made by <b>Siddhant Singh</b></span>
         </footer>
       </div>
     </main>

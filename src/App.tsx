@@ -49,6 +49,7 @@ export function App() {
         {route.page === 'exp' && <ExpPicker current={route.exp} />}
         {route.page === 'play' && <div className="crumbs"><span className="sep">/</span><span>Scratchpad · {route.lang === 'c' ? 'Embedded C' : 'ARM7 assembly'}</span></div>}
         <div className="spacer" />
+        <span className="credit" aria-label="Made by Siddhant Singh">made by <b>Siddhant Singh</b></span>
         <button className="icon-btn" onClick={toggleMute} aria-pressed={!muted} title={muted ? 'Sound is off — turn on to hear the buzzer and relay' : 'Sound on'} aria-label="Toggle sound">
           {muted ? <IMute /> : <ISound />}
         </button>
