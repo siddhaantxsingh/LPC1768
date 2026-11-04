@@ -252,7 +252,7 @@ export function Workbench({ expNo, progId, playground }: Props) {
     if (active === name) setActive(mainFile);
   };
   const revert = () => {
-    if (!confirm('Discard your changes and restore the manual\'s version of this program?')) return;
+    if (!confirm('Discard your changes and restore the manual\'s version of this example?')) return;
     clearSaved(storeId);
     setFiles(original);
     setActive(mainFile);
@@ -311,19 +311,19 @@ export function Workbench({ expNo, progId, playground }: Props) {
               <h1>{exp.short}</h1>
               <p className="aim"><b>Aim.</b> {exp.aim}</p>
             </div>
-            <nav className="plist" aria-label="Programs">
-              <h2><span>Programs</span><span>{exp.programs.length}</span></h2>
+            <nav className="plist" aria-label="Examples and exercises">
+              <h2><span>Examples</span><span>{exp.programs.length}</span></h2>
               {exp.programs.map(p => (
                 <a key={p.id} href={href.exp(exp.no, p.id)} aria-current={p.id === prog?.id ? 'page' : undefined} onClick={() => { if (window.matchMedia('(max-width: 1080px)').matches) setRailOpen(false); }}>
                   <span className="id">P{p.no}</span><span>{p.title}</span>
-                  {edited.has(`e${exp.no}-${p.id}`) && <span className="edited" title="You have edited this program" />}
+                  {edited.has(`e${exp.no}-${p.id}`) && <span className="edited" title="You have edited this example" />}
                 </a>
               ))}
               <h2><span>Exercises · solved</span><span>{exp.exercises.length}</span></h2>
               {exp.exercises.map(p => (
                 <a key={p.id} href={href.exp(exp.no, p.id)} aria-current={p.id === prog?.id ? 'page' : undefined} onClick={() => { if (window.matchMedia('(max-width: 1080px)').matches) setRailOpen(false); }}>
                   <span className="id">E{p.no}</span><span>{p.title}</span>
-                  {edited.has(`e${exp.no}-${p.id}`) && <span className="edited" title="You have edited this program" />}
+                  {edited.has(`e${exp.no}-${p.id}`) && <span className="edited" title="You have edited this example" />}
                 </a>
               ))}
             </nav>
@@ -353,7 +353,7 @@ export function Workbench({ expNo, progId, playground }: Props) {
           </div>
         )}
         <div className="toolbar" onMouseDown={e => { if ((e.target as HTMLElement).closest('button')) e.preventDefault(); }}>
-          <button className="btn icon ghost rail-btn" title={railOpen ? 'Hide the manual panel' : 'Show the manual panel (programs, algorithm, connections)'} aria-pressed={railOpen} onClick={toggleRail} data-rail-toggle><IPanel /></button>
+          <button className="btn icon ghost rail-btn" title={railOpen ? 'Hide the manual panel' : 'Show the manual panel (examples, exercises, algorithm, connections)'} aria-pressed={railOpen} onClick={toggleRail} data-rail-toggle><IPanel /></button>
           {running
             ? <button className="btn" onClick={commands.pause} title="Pause (F6)"><IPause />Pause</button>
             : <button className="btn primary" onClick={commands.run} title={`${dirty || !builtFrom ? 'Build and run' : 'Continue'} (F5)`}><IPlay />{paused && !dirty && builtFrom ? 'Continue' : lang === 'c' ? 'Build & run' : 'Assemble & run'}</button>}
@@ -494,7 +494,12 @@ export function Workbench({ expNo, progId, playground }: Props) {
             )}
           </>
         ) : (
-          <CpuView asm={st.asm} watch={prog?.watch} />
+          <CpuView asm={st.asm} watch={prog?.watch} edit={{
+            onReg: (i, v) => ctl.setAsmReg(i, v),
+            onMem: (a, v) => ctl.setAsmMem(a, v),
+            onFlag: f => ctl.toggleAsmFlag(f),
+            onClear: () => ctl.clearAsmPresets(),
+          }} />
         )}
       </section>
       {toast && <div className="toast" role="status">{toast}</div>}

@@ -1,7 +1,7 @@
 {
   "name": "Bench — LPC1768 & ARM7 lab",
   "short_name": "Bench",
-  "description": "ECE 3143 lab manual programs on a simulated LPC1768 trainer board. Works offline.",
+  "description": "ECE 3143 lab manual examples on a simulated LPC1768 trainer board. Works offline.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

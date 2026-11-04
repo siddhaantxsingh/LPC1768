@@ -86,7 +86,7 @@ export function Home() {
             <div className="eyebrow">ECE 3143 · Microcontrollers &amp; Embedded Systems lab</div>
             <h1>The whole lab manual, <em>running</em> in your browser.</h1>
             <p className="lede">
-              All ten experiments — ARM7 assembly and LPC1768 embedded C — with every program from the manual and a worked solution to every exercise.
+              All ten experiments — ARM7 assembly and LPC1768 embedded C — with every example from the manual and a worked solution to every exercise.
               Edit the code, wire the trainer, and watch the LEDs, LCD, motors and buzzer respond. Nothing to install.
             </p>
             <div className="cta">
@@ -120,7 +120,7 @@ export function Home() {
 
         <div className="section-title">
           <h2>Experiments</h2>
-          <span>{nProg} programs · {nEx} exercises, all solved</span>
+          <span>{nProg} examples · {nEx} exercises, all solved</span>
         </div>
         <div className="index">
           <div className="index-part">
@@ -156,7 +156,7 @@ export function Home() {
         </div>
 
         <footer className="home-foot">
-          <span>An unofficial study companion for the ECE 3143 lab manual. Programs follow the manual; corrections are flagged in each program's notes.</span>
+          <span>An unofficial study companion for the ECE 3143 lab manual. Examples follow the manual; corrections are flagged in each example's notes.</span>
           <span>Press <kbd>?</kbd> for shortcuts</span>
           <span className="credit-foot">made by <b>Siddhant Singh</b></span>
         </footer>
@@ -171,7 +171,7 @@ function IndexRow({ e }: { e: (typeof EXPERIMENTS)[number] }) {
       <span className="n">{String(e.no).padStart(2, '0')}</span>
       <span>
         <div className="t">{e.short}</div>
-        <div className="d">{e.programs.length} programs · {e.exercises.length} exercises</div>
+        <div className="d">{e.programs.length} examples · {e.exercises.length} exercises</div>
       </span>
       <span className="go"><IArrow /></span>
     </a>

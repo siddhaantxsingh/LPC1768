@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import type { AsmView } from '../bench/controller';
+import { useMemo, useRef, useState } from 'react';
+import { AsmView, parseValue } from '../bench/controller';
 import { DATA_BASE } from '../sim/arm/assembler';
 import { hex8 } from '../sim/arm/cpu';
 
@@ -12,13 +12,48 @@ function HexVal({ v }: { v: number }) {
   return <span className="rv"><span className="z">{h.slice(0, keep)}</span>{h.slice(keep)}</span>;
 }
 
-export function CpuView({ asm, watch }: { asm: AsmView | null; watch?: string[] }) {
+/** Click-to-edit value: accepts decimal, hex (0x1F), binary (0b101), negative or a character ('A'). */
+function Editable({ value, onCommit, children, label, className = '' }: { value: number; onCommit: (v: number) => void; children: React.ReactNode; label: string; className?: string }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
+  const [bad, setBad] = useState(false);
+  const ref = useRef<HTMLInputElement>(null);
+  if (editing) {
+    const commit = () => {
+      const v = parseValue(text);
+      if (v === null) { setBad(true); ref.current?.focus(); return; }
+      onCommit(v); setEditing(false);
+    };
+    return (
+      <input ref={ref} className={'edit-in' + (bad ? ' bad' : '')} value={text} autoFocus spellCheck={false} aria-label={label}
+        onChange={e => { setText(e.target.value); setBad(false); }}
+        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+        onBlur={() => { if (parseValue(text) !== null) commit(); else setEditing(false); }}
+        onFocus={e => e.target.select()} />
+    );
+  }
+  return (
+    <button className={'editable ' + className} title={`${label} — click to type a new value (25, -7, 0x1F, 'A')`} aria-label={`Edit ${label}`}
+      onClick={() => { setText('0x' + (value >>> 0).toString(16).toUpperCase()); setBad(false); setEditing(true); }}>
+      {children}
+    </button>
+  );
+}
+
+export interface CpuEdit {
+  onReg: (i: number, v: number) => void;
+  onMem: (addr: number, v: number) => void;
+  onFlag: (f: 'n' | 'z' | 'c' | 'v') => void;
+  onClear: () => void;
+}
+
+export function CpuView({ asm, watch, edit }: { asm: AsmView | null; watch?: string[]; edit?: CpuEdit }) {
   const [fmt, setFmt] = useState<'hex' | 'dec'>('hex');
   const [base, setBase] = useState<string>('');
   if (!asm) {
     return (
       <div className="cpu">
-        <div className="card"><div className="empty">Assemble the program (<kbd>Ctrl</kbd> <kbd>Enter</kbd>) to load it into the ARM7 core.</div></div>
+        <div className="card"><div className="empty">Assemble the program (<kbd>Ctrl</kbd> <kbd>Enter</kbd>) to load it into the ARM7 core. You can then click any register or memory word to type your own input values.</div></div>
       </div>
     );
   }
@@ -39,26 +74,55 @@ export function CpuView({ asm, watch }: { asm: AsmView | null; watch?: string[] 
         </div>
         <div className="regs">
           {regs.map((v, i) => (
-            <div key={i} className={'reg' + (ch.has(i) ? ' chg' : '')} title={`${RN[i]} = 0x${hex8(v)} = ${v >>> 0} (signed ${v | 0})`}>
+            <div key={i} className={'reg' + (ch.has(i) ? ' chg' : '') + (asm.presets.regs.has(i) ? ' preset' : '')} title={`${RN[i]} = 0x${hex8(v)} = ${v >>> 0} (signed ${v | 0})`}>
               <span className="rn">{RN[i]}</span>
-              {fmt === 'hex' ? <HexVal v={v} /> : <span className="rv">{(v | 0).toLocaleString()}</span>}
+              {edit
+                ? <Editable value={v} label={RN[i]} onCommit={nv => edit.onReg(i, nv)}>{fmt === 'hex' ? <HexVal v={v} /> : <span className="rv">{(v | 0).toLocaleString()}</span>}</Editable>
+                : fmt === 'hex' ? <HexVal v={v} /> : <span className="rv">{(v | 0).toLocaleString()}</span>}
               <span className="rd">{fmt === 'hex' ? (v | 0) : '0x' + (v >>> 0).toString(16).toUpperCase()}</span>
             </div>
           ))}
         </div>
         <div className="flags">
           {([['N', 'negative', flags.n], ['Z', 'zero', flags.z], ['C', 'carry', flags.c], ['V', 'overflow', flags.v]] as const).map(([k, n, on]) => (
-            <span key={k} className={'flag' + (on ? ' on' : '')} title={`${n} flag ${on ? 'set' : 'clear'}`}>{k}<small>{on ? 1 : 0}</small></span>
+            <button key={k} className={'flag' + (on ? ' on' : '')} title={`${n} flag ${on ? 'set' : 'clear'} — click to flip it`} aria-pressed={on} aria-label={`${n} flag`} onClick={() => edit?.onFlag(k.toLowerCase() as 'n' | 'z' | 'c' | 'v')}>{k}<small>{on ? 1 : 0}</small></button>
           ))}
           <span className="cpsr">CPSR 0x{hex8(cpsr)} · SVC · ARM</span>
         </div>
       </div>
-      <MemoryCard asm={asm} watch={watch} base={base} setBase={setBase} />
+      {edit && <InputsBar asm={asm} onClear={edit.onClear} />}
+      <MemoryCard asm={asm} watch={watch} base={base} setBase={setBase} edit={edit} />
     </div>
   );
 }
 
-function MemoryCard({ asm, watch, base, setBase }: { asm: AsmView; watch?: string[]; base: string; setBase: (s: string) => void }) {
+function InputsBar({ asm, onClear }: { asm: AsmView; onClear: () => void }) {
+  const labelAt = new Map<number, string>();
+  for (const [n, sy] of asm.prog.symbols) if (sy.kind === 'data' && !labelAt.has(sy.value)) labelAt.set(sy.value, n);
+  const items = [
+    ...[...asm.presets.regs].map(([i, v]) => `${RN[i].split(' ')[0]} = ${fmtIn(v)}`),
+    ...[...asm.presets.mem].map(([a, v]) => `${labelAt.get(a) ?? '0x' + hex8(a)} = ${fmtIn(v)}`),
+  ];
+  return (
+    <div className="card inputs-bar">
+      <div className="card-h">
+        <h4>Your inputs</h4>
+        <span className="grow" />
+        {items.length > 0 && <button className="btn sm ghost" onClick={onClear} title="Remove your inputs and restore the program's own values">Clear</button>}
+      </div>
+      <div className="inputs-body">
+        {items.length
+          ? <div className="in-chips">{items.map(t => <span key={t} className="in-chip">{t}</span>)}</div>
+          : <p>Click a <b>register</b> or a <b>data-memory word</b> and type a value (25, -7, 0x1F or 'A'). Values set before the first instruction are kept as inputs and applied on every run.</p>}
+        {items.length > 0 && asm.steps === 0 && <p className="in-note">Press <b>Assemble &amp; run</b> or step to see the output. If the program loads a register itself (e.g. <code>MOV R0, #25</code>), that instruction overwrites your value, so change the code or the data memory instead.</p>}
+      </div>
+    </div>
+  );
+}
+
+function fmtIn(v: number) { const s = v | 0; return Math.abs(s) < 100000 ? `${s} (0x${(v >>> 0).toString(16).toUpperCase()})` : `0x${(v >>> 0).toString(16).toUpperCase()}`; }
+
+function MemoryCard({ asm, watch, base, setBase, edit }: { asm: AsmView; watch?: string[]; base: string; setBase: (s: string) => void; edit?: CpuEdit }) {
   const cpu = asm.cpu;
   const prog = asm.prog;
   const labelAt = useMemo(() => {
@@ -105,7 +169,12 @@ function MemoryCard({ asm, watch, base, setBase }: { asm: AsmView; watch?: strin
                   <tr key={a}>
                     <td className="addr">{hex8(a)}</td>
                     <td className="lab">{labelAt.get(a) ?? ''}</td>
-                    <td className={'w' + (touched.has(a) ? ' chg' : '')} title={wrote ? 'Written by the program' : ''}>{hex8(w)}{wrote && !touched.has(a) ? ' ·' : ''}</td>
+                    <td className={'w' + (touched.has(a) ? ' chg' : '') + (asm.presets.mem.has(a) ? ' preset' : '')} title={wrote ? 'Written by the program' : ''}>
+                      {edit && a >= DATA_BASE && a < 0x40008000
+                        ? <Editable value={w} label={`${labelAt.get(a) ?? 'word'} at 0x${hex8(a)}`} onCommit={nv => edit.onMem(a, nv)}>{hex8(w)}</Editable>
+                        : hex8(w)}
+                      {wrote && !touched.has(a) ? ' ·' : ''}
+                    </td>
                     <td className="dec">{w | 0}</td>
                     <td className="asc">{bytes.map(b => (b >= 32 && b < 127 ? String.fromCharCode(b) : '.')).join('')}</td>
                   </tr>

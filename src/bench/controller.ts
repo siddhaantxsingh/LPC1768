@@ -40,10 +40,26 @@ export interface AsmView {
   cycles: number;
   prog: AsmResult;
   cpu: ArmCpu;
+  presets: AsmPresets;
   lastAccess: { addr: number; size: number; write: boolean }[];
 }
 
 type Listener = (s: BenchState) => void;
+
+/** Values the student types into registers / memory before running (assembly experiments). */
+export interface AsmPresets { regs: Map<number, number>; mem: Map<number, number> }
+
+/** Parse "25", "-7", "0x1F", "0b101", "'A'" into a 32-bit value; null if invalid. */
+export function parseValue(text: string): number | null {
+  const t = text.trim().replace(/_/g, '');
+  if (!t) return null;
+  if (/^'.'$/.test(t)) return t.charCodeAt(1);
+  if (/^[-+]?0x[0-9a-f]+$/i.test(t)) { const v = parseInt(t.replace(/^[-+]?0x/i, ''), 16); return (t.startsWith('-') ? -v : v) >>> 0; }
+  if (/^[-+]?0b[01]+$/i.test(t)) { const v = parseInt(t.replace(/^[-+]?0b/i, ''), 2); return (t.startsWith('-') ? -v : v) >>> 0; }
+  if (/^[0-9a-f]{1,8}h$/i.test(t)) return parseInt(t.slice(0, -1), 16) >>> 0;
+  if (/^[-+]?\d+$/.test(t)) { const v = Number(t); if (v < -2147483648 || v > 4294967295) return null; return v >>> 0; }
+  return null;
+}
 
 export class BenchController {
   board = new Board();
@@ -56,6 +72,7 @@ export class BenchController {
   breakpoints = new Map<string, Set<number>>();
   speed = 1;
   asmAnimate = false;
+  presets: AsmPresets = { regs: new Map(), mem: new Map() };
   private raf = 0;
   private lastFrame = 0;
   private listeners = new Set<Listener>();
@@ -88,6 +105,7 @@ export class BenchController {
     this.lang = lang;
     this.files = { ...files };
     this.main = main;
+    this.presets = { regs: new Map(), mem: new Map() };
     this.session = null;
     this.cpu = null;
     this.setWiring(wiring ?? emptyWiring(), false);
@@ -179,6 +197,7 @@ export class BenchController {
       return false;
     }
     this.cpu = new ArmCpu(res);
+    this.applyPresets();
     this.applyBreakpoints();
     this.emit({ status: 'paused', diagnostics: diags, buildMs: ms, message: null, errorLine: null, asm: this.asmView(), loc: { file: this.main, line: this.cpu.curLine }, stats: { code: res.codeEnd, ram: res.dataEnd - 0x40000000 } });
     return true;
@@ -189,7 +208,7 @@ export class BenchController {
     if (!c) return null;
     return {
       regs: Array.from(c.r), flags: { n: c.n, z: c.z, c: c.c, v: c.v }, changed: [...c.changedRegs], steps: c.steps, cycles: c.cycles,
-      prog: c.prog, cpu: c, lastAccess: c.lastAccess.slice(),
+      prog: c.prog, cpu: c, lastAccess: c.lastAccess.slice(), presets: this.presets,
     };
   }
 
@@ -240,7 +259,7 @@ export class BenchController {
     this.stopLoop();
     audio.silence();
     if (this.lang === 'asm') {
-      if (this.cpu) { this.cpu.reset(); this.applyBreakpoints(); }
+      if (this.cpu) { this.cpu.reset(); this.applyPresets(); this.applyBreakpoints(); }
       this.emit({ status: this.cpu ? 'paused' : 'idle', message: null, errorLine: null, asm: this.asmView(), loc: this.cpu ? { file: this.main, line: this.cpu.curLine } : null });
       return;
     }
@@ -352,6 +371,54 @@ export class BenchController {
   }
 
   setAsmAnimate(on: boolean) { this.asmAnimate = on; }
+
+  private applyPresets() {
+    const c = this.cpu;
+    if (!c) return;
+    for (const [i, v] of this.presets.regs) c.r[i] = v >>> 0;
+    for (const [a, v] of this.presets.mem) for (let k = 0; k < 4; k++) c.mem.set(a + k, (v >>> (8 * k)) & 0xff);
+    c.changedRegs = new Set(this.presets.regs.keys());
+  }
+
+  /** Assemble if needed so there is a CPU to edit. */
+  private ensureCpu(): ArmCpu | null {
+    if (!this.cpu) this.build();
+    return this.cpu;
+  }
+
+  /** Type a value into a register. Before the first instruction it is kept as an input for every run. */
+  setAsmReg(i: number, v: number) {
+    const c = this.ensureCpu();
+    if (!c) return;
+    if (i === 15) { v &= ~3; if (!c.prog.instrs.has(v)) { this.emit({ message: `No instruction at 0x${v.toString(16).toUpperCase()} — PC must point at code.` }); return; } }
+    c.r[i] = v >>> 0;
+    c.changedRegs = new Set([i]);
+    if (i === 15) { c.curLine = c.prog.instrs.get(v)!.line; c.halted = false; }
+    if (c.steps === 0) this.presets.regs.set(i, v >>> 0);
+    this.emit({ asm: this.asmView(), loc: { file: this.main, line: c.curLine }, message: c.steps === 0 ? null : this.state.message });
+  }
+
+  setAsmMem(addr: number, v: number) {
+    const c = this.ensureCpu();
+    if (!c) return;
+    if (addr < 0x40000000 || addr >= 0x40008000) { this.emit({ message: 'Only RAM (0x40000000 – 0x40007FFF) can be edited; code and constants are read-only.' }); return; }
+    for (let k = 0; k < 4; k++) { c.mem.set(addr + k, (v >>> (8 * k)) & 0xff); c.written.set(addr + k, c.steps); }
+    if (c.steps === 0) this.presets.mem.set(addr, v >>> 0);
+    this.emit({ asm: this.asmView() });
+  }
+
+  toggleAsmFlag(f: 'n' | 'z' | 'c' | 'v') {
+    const c = this.ensureCpu();
+    if (!c) return;
+    c[f] = !c[f];
+    this.emit({ asm: this.asmView() });
+  }
+
+  clearAsmPresets() {
+    this.presets = { regs: new Map(), mem: new Map() };
+    if (this.cpu) { this.cpu.reset(); this.applyBreakpoints(); }
+    this.emit({ asm: this.asmView(), status: this.cpu ? 'paused' : this.state.status, message: null, loc: this.cpu ? { file: this.main, line: this.cpu.curLine } : null });
+  }
 
   // ---------- inputs ----------
   pressKey(k: number, down: boolean) { this.board.pressKey(k, down); this.poke(); }

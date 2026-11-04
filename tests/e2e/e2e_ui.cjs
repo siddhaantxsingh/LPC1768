@@ -332,6 +332,38 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.click('.toolbar .btn.primary'); await sleep(300);
   check('asm scratchpad runs', (await status()).includes('finished') && (await B('c.cpu.r[1]')) === 55);
 
+
+  // ---------------- assembly: typing your own inputs ----------------
+  await p.goto(BASE + '#/exp/2/p4'); await sleep(500);
+  await p.click('.toolbar .btn.primary'); await sleep(300);
+  check('asm inputs: default RESULT 55', (await B("c.cpu.peek32(c.cpu.prog.symbols.get('RESULT').value)")) === 55);
+  await p.click('.toolbar .btn[title^="Reset"]'); await sleep(200);
+  check('asm inputs: Inputs card explains how', (await p.textContent('.inputs-bar')).includes('Click a register'));
+  const nRow = p.locator('.memtab tr', { hasText: ' N ' }).first();
+  await p.locator('.memtab tr').filter({ has: p.locator('td.lab', { hasText: /^N$/ }) }).locator('.editable').click();
+  await p.keyboard.press('Control+a'); await p.keyboard.type('5'); await p.keyboard.press('Enter'); await sleep(150);
+  check('asm inputs: memory edit shown as an input', (await p.textContent('.inputs-bar')).includes('N = 5'));
+  await p.click('.toolbar .btn.primary'); await sleep(300);
+  check('asm inputs: run uses the input (sum 1..5 = 15)', (await B("c.cpu.peek32(c.cpu.prog.symbols.get('RESULT').value)")) === 15);
+  await p.click('.toolbar .btn.primary'); await sleep(300);
+  check('asm inputs: input kept on the next run', (await B("c.cpu.peek32(c.cpu.prog.symbols.get('RESULT').value)")) === 15);
+  await p.click('.inputs-bar .btn >> text=Clear'); await sleep(150);
+  await p.click('.toolbar .btn.primary'); await sleep(300);
+  check('asm inputs: Clear restores the program value', (await B("c.cpu.peek32(c.cpu.prog.symbols.get('RESULT').value)")) === 55);
+  // register edit mid-program + bad input + flag flip
+  await p.goto(BASE + '#/exp/1/p1'); await sleep(500);
+  await p.click('.toolbar .btn.primary'); await sleep(200);
+  await p.click('.toolbar .btn[title^="Reset"]'); await sleep(150);
+  await p.click('.toolbar .btn[title^="Step into"]'); await p.click('.toolbar .btn[title^="Step into"]'); await sleep(150);
+  await p.locator('.reg').nth(0).locator('.editable').click();
+  await p.keyboard.press('Control+a'); await p.keyboard.type('zz'); await p.keyboard.press('Enter'); await sleep(100);
+  check('asm inputs: invalid value rejected', (await p.$('.edit-in.bad')) !== null);
+  await p.keyboard.press('Control+a'); await p.keyboard.type('100'); await p.keyboard.press('Enter'); await sleep(150);
+  await p.click('.toolbar .btn[title^="Step into"]'); await sleep(150);
+  check('asm inputs: live register edit feeds the next instruction (R2 = 100 + 16)', (await B('c.cpu.r[2]')) === 116);
+  const z0 = await B('c.cpu.z');
+  await p.click('.flag[aria-label="zero flag"]'); await sleep(100);
+  check('asm inputs: flag flips on click', (await B('c.cpu.z')) !== z0);
   // ---------------- medium width rail toggle ----------------
   await p.setViewportSize({ width: 1000, height: 800 });
   await p.goto(BASE + '#/exp/6/p1'); await sleep(400);

@@ -7,7 +7,7 @@
 ### The ECE 3143 MES lab manual, running in your browser
 
 An LPC1768 trainer board, an embedded-C compiler and an ARM7 assembler, all running client-side.
-Every program from the manual, a worked solution to every exercise, and a board you wire by hand.
+Every example from the manual, a worked solution to every exercise, and a board you wire by hand.
 
 <br />
 
@@ -17,10 +17,10 @@ Every program from the manual, a worked solution to every exercise, and a board 
 ![CodeMirror](https://img.shields.io/badge/CodeMirror-6-D30707?style=for-the-badge)
 ![Offline](https://img.shields.io/badge/Works-offline-F0A544?style=for-the-badge)
 
-![Programs](https://img.shields.io/badge/programs-38-B4531F?style=flat-square)
+![Examples](https://img.shields.io/badge/examples-38-B4531F?style=flat-square)
 ![Exercises](https://img.shields.io/badge/exercises%20solved-46-E8963A?style=flat-square)
 ![Unit tests](https://img.shields.io/badge/unit%20tests-28%2F28-3F7D3A?style=flat-square)
-![E2E](https://img.shields.io/badge/browser%20checks-84%20programs%20%2B%20143%20controls-7FC66B?style=flat-square)
+![E2E](https://img.shields.io/badge/browser%20checks-84%20examples%20%2B%20143%20controls-7FC66B?style=flat-square)
 ![Backend](https://img.shields.io/badge/backend-none-8C2F6B?style=flat-square)
 
 <br />
@@ -37,6 +37,7 @@ Every program from the manual, a worked solution to every exercise, and a board 
 - [Screenshots](#-screenshots)
 - [Features](#-features)
 - [Experiments covered](#-experiments-covered)
+- [Try your own inputs and code](#-try-your-own-inputs-and-code)
 - [How it works](#-how-it-works)
 - [The board and its wiring](#-the-board-and-its-wiring)
 - [Run it locally](#-run-it-locally)
@@ -50,7 +51,7 @@ Every program from the manual, a worked solution to every exercise, and a board 
 ## 🧭 What it is
 
 Bench is a study companion for the **Microcontrollers & Embedded Systems lab (ECE 3143)**. It covers all ten
-experiments, ARM7 assembly in Part A and LPC1768 embedded C in Part B, with the manual's programs, a solution
+experiments, ARM7 assembly in Part A and LPC1768 embedded C in Part B, with the manual's examples, a solution
 to every exercise question, and a simulated **ALS-SDA-ARMCTXM3-01** trainer board beside the code.
 
 > [!TIP]
@@ -88,6 +89,8 @@ to every exercise question, and a simulated **ALS-SDA-ARMCTXM3-01** trainer boar
 | 🔌 | **Manual wiring** | Plug FRC cables from any header (CNA-CND) into any socket by clicking; click a cable to unplug it. Jumpers JP5, JP7, JP8, JP16 and JP18 toggle by click. A live checklist shows what the manual's *Connections* still need. |
 | ⚙️ | **3D motors** | The stepper (1.8°/step) and DC motor sit below the board, wired to CNA5, and turn exactly as the code drives them. |
 | 📈 | **Oscilloscope** | Two channels with trigger, frequency, duty-cycle and voltage readings. Opens under the board for the waveform questions (PWM, DAC). |
+| ⌨️ | **Your own inputs** | In the assembly experiments, click any register, data-memory word or flag and type a value (`25`, `-7`, `0x1F`, `'A'`). Values set before the first instruction are kept as inputs for every run. |
+| 🧪 | **Your own C code** | The *Blank C project* scratchpad runs any C you write on the board: wire the cables, build and run. |
 | 🐞 | **Debugger** | Breakpoints, step over/into/out, live variables, plain-language errors pointing at the line, and runtime faults such as bad pointers or divide by zero. |
 | 🔊 | **Sound** | Buzzer tones, relay clicks, a faint motor hum, and a "listen to channel A" probe speaker. |
 | 📴 | **Offline + installable** | A service worker caches the whole app on the first visit; it can be installed like an app. |
@@ -116,17 +119,17 @@ mindmap
 
 ```mermaid
 pie showData
-    title 84 runnable programs
-    "Manual programs · assembly" : 25
+    title 84 runnable examples
+    "Manual examples · assembly" : 25
     "Exercise solutions · assembly" : 24
-    "Manual programs · C" : 13
+    "Manual examples · C" : 13
     "Exercise solutions · C" : 22
 ```
 
 <details>
-<summary><b>Full list of programs and exercises</b></summary>
+<summary><b>Full list of examples and exercises</b></summary>
 
-| Exp | Topic | Programs | Exercises |
+| Exp | Topic | Examples | Exercises |
 |:-:|---|:-:|:-:|
 | 1 | Data processing: ADD, SUB, MUL, MLA, logic, shifts, rotates | 10 | 7 |
 | 2 | Conditional execution and branching: sign, parity, GCD, sum of N | 5 | 6 |
@@ -140,6 +143,34 @@ pie showData
 | 10 | EINT2: LED toggle, motor sequencing and speed | 1 | 4 |
 
 </details>
+
+---
+
+## ⌨️ Try your own inputs and code
+
+**Assembly (Experiments 1-4).** Assemble, then click a register or a word in *Data memory* and type a
+value: decimal, negative, hex (`0x1F`), binary (`0b101`) or a character (`'A'`). Values entered before the
+first instruction appear under **Your inputs** and are applied every time you press *Assemble & run*,
+until you press *Clear*. Flags N/Z/C/V flip with a click.
+
+```mermaid
+flowchart LR
+    A["Assemble"] --> B["Click N in Data memory<br/>type 5"]
+    B --> C["Assemble & run"]
+    C --> D["RESULT = 15<br/>(sum of 1..5)"]
+    style A fill:#3b2a15,stroke:#f0a544,color:#ffe2b8
+    style B fill:#10283b,stroke:#4da3ff,color:#d6ecff
+    style C fill:#3b2a15,stroke:#f0a544,color:#ffe2b8
+    style D fill:#24331f,stroke:#7fc66b,color:#e1f5d8
+```
+
+> [!NOTE]
+> If a program loads a register itself (`MOV R0, #25`), that instruction overwrites a value you typed into
+> R0. Edit the data memory, or the code, instead.
+
+**C (Experiments 5-10).** Every example's code is editable, and **Blank C project** on the home page is a
+scratchpad for anything you like. Plug the cables your code needs, then build and run. Code must use the
+supported C subset (see [limitations](#-fidelity-and-limitations)).
 
 ---
 
@@ -297,10 +328,10 @@ flowchart LR
 
 | Jumper | Shorted means | Needed for |
 |:-:|---|---|
-| **JP5** | P0.26 drives LCD D7 | LCD programs (open it for the DAC) |
-| **JP16** | LCD powered | every LCD program |
-| **JP18 (2-3)** | POT4 → AD0.4 / P1.30 | ADC programs |
-| **JP7 / JP8** | UART3 TX / RX → RS-232 port | serial programs |
+| **JP5** | P0.26 drives LCD D7 | LCD examples (open it for the DAC) |
+| **JP16** | LCD powered | every LCD example |
+| **JP18 (2-3)** | POT4 → AD0.4 / P1.30 | ADC examples |
+| **JP7 / JP8** | UART3 TX / RX → RS-232 port | serial examples |
 
 ---
 
@@ -312,7 +343,7 @@ flowchart LR
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # unit tests: every manual program and exercise on the simulator
+npm test           # unit tests: every manual example and exercise on the simulator
 npm run build      # production build into dist/
 ```
 
@@ -356,7 +387,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    U["🧱 Unit tests · Vitest · 28<br/>compiler semantics · every manual program · exercise results"] --> P["🧭 Browser run of all 84 programs<br/>wired by hand through the UI · results checked on the board"]
+    U["🧱 Unit tests · Vitest · 28<br/>compiler semantics · every manual example · exercise results"] --> P["🧭 Browser run of all 84 examples<br/>wired by hand through the UI · results checked on the board"]
     P --> C["🖱️ 143 control checks<br/>every button · connector · jumper · key · knob · layout · offline"]
 
     style U fill:#24331f,stroke:#7fc66b,color:#e1f5d8
@@ -367,7 +398,7 @@ flowchart TB
 ```bash
 npm test                                  # unit tests
 npm run build && npx vite preview --port 4173
-node tests/e2e/e2e_programs.cjs           # run all 84 programs in the browser
+node tests/e2e/e2e_programs.cjs           # run all 84 examples in the browser
 node tests/e2e/e2e_ui.cjs                 # click every control
 ```
 
@@ -379,7 +410,7 @@ node tests/e2e/e2e_ui.cjs                 # click every control
 src/
 ├── content/
 │   ├── experiments.ts      aims, algorithms, connections, notes for all 10 experiments
-│   └── code/               every manual program (.c / .s); ex/ holds the exercise solutions
+│   └── code/               every manual example (.c / .s); ex/ holds the exercise solutions
 ├── sim/
 │   ├── c/                  preprocessor · lexer · parser · compiler · bytecode VM · builtins
 │   ├── arm/                ARM7 assembler and CPU
@@ -409,7 +440,7 @@ tests/
 - **Assembly:** ARM state only, with no Thumb, interrupts or processor modes.
 - **Manual fixes:** the printed listings' mistakes (an undeclared `delay_cnt`, an LCD buffer with no room
   for `'\0'`, LCD pins never set as outputs, an uninitialised DAC counter) are corrected, and each fix is
-  noted beside its program.
+  noted beside its example.
 
 </details>
 
