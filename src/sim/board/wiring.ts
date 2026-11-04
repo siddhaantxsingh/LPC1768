@@ -3,7 +3,7 @@
 
 export type Header = 'CNA' | 'CNB' | 'CNC' | 'CND';
 export type Socket = 'CNA1' | 'CNA2' | 'CNA5' | 'CNB1' | 'CNB2' | 'CNB3' | 'CNAD';
-export type Jumper = 'JP5' | 'JP16' | 'JP18';
+export type Jumper = 'JP5' | 'JP16' | 'JP18' | 'JP7' | 'JP8';
 
 export interface PinRef { port: number; bit: number }
 
@@ -27,7 +27,9 @@ export const SOCKETS: Record<Socket, { title: string; lines: string[]; home: Hea
 export const JUMPERS: Record<Jumper, { title: string; desc: string }> = {
   JP5: { title: 'JP5', desc: 'Routes P0.26 to CND pin 4 (LCD D7). Open it to use the DAC output on P0.26.' },
   JP16: { title: 'JP16', desc: 'Powers the alphanumeric LCD.' },
-  JP18: { title: 'JP18 (2-3)', desc: 'Connects POT4 to AD0.4 / P1.30.' },
+  JP18: { title: 'JP18', desc: 'Pins 2-3 connect POT4 to AD0.4 / P1.30 (pins 1-2: USB, not used here).' },
+  JP7: { title: 'JP7', desc: 'Connects TXD3 (P0.0) to the RS-232 port RM1.' },
+  JP8: { title: 'JP8', desc: 'Connects RXD3 (P0.1) to the RS-232 port RM1.' },
 };
 
 export interface Wiring {
@@ -35,7 +37,26 @@ export interface Wiring {
   jumpers: Record<Jumper, boolean>;
 }
 
-export const emptyWiring = (): Wiring => ({ cables: {}, jumpers: { JP5: true, JP16: true, JP18: true } });
+/** A fresh bench: no ribbon cables; JP5 and JP16 fitted at the factory, the rest open. */
+export const emptyWiring = (): Wiring => ({ cables: {}, jumpers: { JP5: true, JP16: true, JP18: false, JP7: false, JP8: false } });
+
+export interface Requirement { cables: [Header, Socket][]; jumpers: Partial<Record<Jumper, boolean>> }
+
+export function missing(w: Wiring, r: Requirement): string[] {
+  const out: string[] = [];
+  for (const [h, s] of r.cables) if (w.cables[h] !== s) out.push(`${h} → ${s}`);
+  for (const [j, v] of Object.entries(r.jumpers) as [Jumper, boolean][]) if (!!w.jumpers[j] !== v) out.push(v ? `short ${j}${j === 'JP18' ? ' (2-3)' : ''}` : `open ${j}`);
+  return out;
+}
+
+export function applyRequirement(w: Wiring, r: Requirement): Wiring {
+  const cables = { ...w.cables };
+  for (const [h, s] of r.cables) {
+    for (const k of Object.keys(cables) as Header[]) if (cables[k] === s) delete cables[k];
+    cables[h] = s;
+  }
+  return { cables, jumpers: { ...w.jumpers, ...r.jumpers } as Record<Jumper, boolean> };
+}
 
 export function pinLabel(p: PinRef) { return `P${p.port}.${p.bit}`; }
 

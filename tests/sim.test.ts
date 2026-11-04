@@ -16,7 +16,7 @@ function boot(file: string, cables: any, jumpers: Partial<{ JP5: boolean; JP16: 
   const r = compile(files);
   if (!r.ok) throw new Error(file + ': ' + r.diagnostics.map(d => `${d.file}:${d.line} ${d.msg}`).join('; '));
   const b = new Board();
-  b.rewire({ cables, jumpers: { JP5: true, JP16: true, JP18: true, ...jumpers } });
+  b.rewire({ cables, jumpers: { JP5: true, JP16: true, JP18: true, JP7: true, JP8: true, ...jumpers } });
   const s = new Session(r.out!, b);
   b.setRate(rate);
   return { b, s };

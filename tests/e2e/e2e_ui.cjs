@@ -25,7 +25,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   for (let n = 1; n <= 10; n++) {
     await p.goto(BASE + '#/');
     await p.click(`.index a.row[href="#/exp/${n}/p1"]`);
-    await p.waitForSelector('.rail-head h1');
+    await p.waitForSelector('.rail-head h1', { state: 'attached' });
     check(`home: row ${n} opens experiment ${n}`, (await p.textContent('.rail-head .k')).includes(String(n).padStart(2, '0')));
   }
   for (const [label, hash] of [['Start with GPIO', '#/exp/5/p1'], ['ARM7 assembly', '#/exp/1/p1'], ['Blank C project', '#/play/c']]) {
@@ -48,7 +48,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const t0 = await p.evaluate(() => document.documentElement.dataset.theme);
   await p.click('.theme-switch');
   const t1 = await p.evaluate(() => document.documentElement.dataset.theme);
-  check('header: theme toggles', t0 !== t1);
+  check('header: theme switch toggles', t0 !== t1 && (await p.getAttribute('.theme-switch', 'aria-checked')) === String(t1 === 'dark'));
   await p.click('.theme-switch');
   const m0 = await p.getAttribute('.topbar .icon-btn[aria-label="Toggle sound"]', 'aria-pressed');
   await p.click('.topbar .icon-btn[aria-label="Toggle sound"]');
@@ -155,50 +155,96 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const after = await p.$eval('.dock', e => e.getBoundingClientRect().height);
   check('console: dock resizes', after > before + 50, `${before}->${after}`);
 
-  // ---------------- wiring & board controls ----------------
-  await p.click('.chip >> text=CNA1'); await sleep(100);
-  check('wiring: unplug CNA1', !(await B("Object.values(c.wiring.cables).includes('CNA1')")));
-  check('wiring: "not wired" hint appears', (await p.textContent('.bench-col')).includes('not wired the way'));
-  await p.click('.chip >> text=CNA2');
-  check('wiring: plug CNA2 from CNA', (await B('c.wiring.cables.CNA')) === 'CNA2');
-  await p.click('.wiring .btn >> text=Wire as in manual'); await sleep(100);
-  check('wiring: "Wire as in manual" restores', (await B('c.wiring.cables.CNA')) === 'CNA1' && !(await B("Object.values(c.wiring.cables).includes('CNA2')")));
-  for (const j of ['JP5', 'JP16', 'JP18']) {
-    const v0 = await B(`c.wiring.jumpers.${j}`);
-    await p.click(`.chip.jp >> text=${j}`);
-    check(`wiring: jumper ${j} toggles`, (await B(`c.wiring.jumpers.${j}`)) !== v0);
-    await p.click(`.chip.jp >> text=${j}`);
+  // ---------------- manual wiring & board controls ----------------
+  await p.click('.conn-chip'); await p.click('.conn-pop >> text=Unplug all'); await p.click('.conn-chip');
+  check('wiring: Unplug all removes every cable', (await B('Object.keys(c.wiring.cables).length')) === 0);
+  check('wiring: checklist shows missing', (await p.textContent('.conn-chip')).includes('0/1'));
+  check('wiring: missing ports highlighted', (await p.$$('.t-conn.need')).length === 2);
+  await p.click('.t-conn[aria-label^="Header CNA "]');
+  check('wiring: header selects', (await p.$('.t-conn.sel')) !== null && (await p.$('.tb-pickhint')) !== null);
+  await p.keyboard.press('Escape');
+  check('wiring: Esc cancels', (await p.$('.t-conn.sel')) === null);
+  await p.click('.t-conn[aria-label^="Header CNA "]'); await p.click('.t-conn[aria-label^="Socket CNA2"]');
+  check('wiring: header→socket plugs a cable', (await B('c.wiring.cables.CNA')) === 'CNA2' && (await p.$$('.cable')).length === 1);
+  await p.click('.t-conn[aria-label^="Socket CNA1"]'); await p.click('.t-conn[aria-label^="Header CNA "]');
+  check('wiring: socket→header works and replaces the old cable', (await B('c.wiring.cables.CNA')) === 'CNA1' && (await p.$$('.cable')).length === 1);
+  check('wiring: checklist ticks', (await p.textContent('.conn-chip')).includes('1/1') && (await p.$('.conn-chip.on')) !== null);
+  if (await p.$('.toolbar .btn.primary')) await p.click('.toolbar .btn.primary');
+  await sleep(1500);
+  const ledSeen = [];
+  for (let i = 0; i < 10; i++) { ledSeen.push(await B('c.state.snapshot.leds[0]')); await sleep(80); }
+  check('wiring: LEDs blink once wired by hand', ledSeen.some(x => x > 0.5) && ledSeen.some(x => x < 0.5), JSON.stringify(ledSeen));
+  await p.click('.t-conn[aria-label^="Header CNC "]'); await p.click('.t-conn[aria-label^="Socket CNB3"]');
+  check('wiring: second cable', (await B('c.wiring.cables.CNC')) === 'CNB3' && (await p.$$('.cable')).length === 2);
+  const cab = await p.$$('.cable .cable-hit');
+  const hit = await p.evaluate(el => { const l = el.getTotalLength(); const pt = el.getPointAtLength(l / 2); const m = el.getScreenCTM(); return { x: pt.x * m.a + m.e, y: pt.y * m.d + m.f }; }, cab[1]);
+  await p.mouse.click(hit.x, hit.y); await sleep(100);
+  check('wiring: clicking a cable unplugs it', (await p.$$('.cable')).length === 1 && !(await B('c.wiring.cables.CNC')));
+  for (const j of ['JP5', 'JP16', 'JP18', 'JP7', 'JP8']) {
+    const v0 = await B(`!!c.wiring.jumpers.${j}`);
+    await p.click(`.t-jmp[aria-label^="Jumper ${j} "]`);
+    check(`wiring: jumper ${j} toggles`, (await B(`!!c.wiring.jumpers.${j}`)) !== v0 && (await p.getAttribute(`.t-jmp[aria-label^="Jumper ${j} "]`, 'aria-checked')) === String(!v0));
+    await p.click(`.t-jmp[aria-label^="Jumper ${j} "]`);
   }
-  const f0 = await p.$('.pcb.focus') !== null;
-  await p.click('.wiring .btn[aria-pressed]');
-  check('board: focus toggle', ((await p.$('.pcb.focus')) !== null) !== f0);
-  await p.click('.wiring .btn[aria-pressed]');
+  await p.reload(); await sleep(700);
+  check('wiring: cables persist after reload', (await B('c.wiring.cables.CNA')) === 'CNA1');
+  await p.goto(BASE + '#/exp/5/p2'); await sleep(500);
+  check('wiring: cables stay when switching programs', (await B('c.wiring.cables.CNA')) === 'CNA1');
+  await p.click('.toolbar .btn.primary'); await sleep(300);
+  check('wiring: running without the needed cable warns', (await p.textContent('.run-warn')).includes('CNA → CNA5'));
+  await p.click('.run-warn >> text=Connect for me'); await sleep(150);
+  check('wiring: "Connect for me" in the warning wires it', (await B('c.wiring.cables.CNA')) === 'CNA5' && (await p.$('.run-warn')) === null);
+  await p.click('.toolbar .btn[title="Stop"]').catch(() => {});
+  await p.goto(BASE + '#/exp/5/p1'); await sleep(500);
+  await p.click('.conn-chip'); await p.click('.conn-pop >> text=Connect for me'); await sleep(100);
+  // layout controls
+  const whole = await p.$eval('.trainer2', e => { const r = e.getBoundingClientRect(); return r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1 && r.top >= 0; });
+  check('board: whole board visible without scrolling', whole);
+  await p.click('.seg-ctl[aria-label="Board zoom"] >> text=100%'); await sleep(200);
+  check('board: 100% zoom', (await p.$('.stage.zoomed')) !== null);
+  await p.click('.seg-ctl[aria-label="Board zoom"] >> text=Fit'); await sleep(200);
+  check('board: fit zoom', (await p.$('.stage.fit')) !== null);
+  const bw0 = await p.$eval('.bench-col', e => e.getBoundingClientRect().width);
+  await p.click('.panel-head .btn.icon[aria-pressed]'); await sleep(250);
+  const bw1 = await p.$eval('.bench-col', e => e.getBoundingClientRect().width);
+  check('board: maximize widens the board', bw1 > bw0 + 300, `${bw0}->${bw1}`);
+  await p.click('.panel-head .btn.icon[aria-pressed]'); await sleep(250);
+  const sp = await (await p.$('.splitter')).boundingBox();
+  await p.mouse.move(sp.x + 3, sp.y + 200); await p.mouse.down(); await p.mouse.move(sp.x - 150, sp.y + 200, { steps: 6 }); await p.mouse.up(); await sleep(150);
+  const bw2 = await p.$eval('.bench-col', e => e.getBoundingClientRect().width);
+  check('layout: splitter drag resizes the board', bw2 > bw0 + 100, `${bw0}->${bw2}`);
+  await p.dblclick('.splitter'); await sleep(100);
+  const r0 = await p.$eval('.rail', e => getComputedStyle(e).visibility);
+  await p.click('.rail-btn'); await sleep(200);
+  const r1 = await p.$eval('.rail', e => getComputedStyle(e).visibility);
+  check('layout: manual panel toggle', r0 !== r1, `${r0}->${r1}`);
+  await p.click('.rail-btn'); await sleep(200);
   // keypad: pointer press
-  const key = await p.$('.key >> nth=5');
+  const key = await p.$('.t-key >> nth=5');
   const kb = await key.boundingBox();
   await p.mouse.move(kb.x + kb.width / 2, kb.y + kb.height / 2); await p.mouse.down(); await sleep(80);
-  check('board: keypad press registers', await B('b.keys.has(5)') && (await p.$('.key.down')) !== null);
+  check('board: keypad press registers', await B('b.keys.has(5)') && (await p.$('.t-key.down')) !== null);
   await p.mouse.up(); await sleep(50);
   check('board: keypad release', !(await B('b.keys.has(5)')));
   await p.mouse.click(1000, 60); // unfocus
   await p.keyboard.down('a'); await sleep(50);
   check('board: keyboard A presses key A', await B('b.keys.has(10)'));
   await p.keyboard.up('a');
-  const sw = await (await p.$('.tact')).boundingBox();
-  await p.mouse.move(sw.x + 20, sw.y + 20); await p.mouse.down(); await sleep(60);
+  const sw = await (await p.$('.t-tact')).boundingBox();
+  await p.mouse.move(sw.x + sw.width / 2, sw.y + sw.height / 2); await p.mouse.down(); await sleep(60);
   check('board: SW2 press', await B('b.sw2'));
   await p.mouse.up();
   check('board: SW2 release', !(await B('b.sw2')));
   await p.mouse.click(1000, 60); await p.keyboard.down(' '); await sleep(40);
   check('board: Space presses SW2', await B('b.sw2'));
   await p.keyboard.up(' ');
-  const knob = await (await p.$('.knob')).boundingBox();
-  await p.mouse.move(knob.x + 27, knob.y + 27); await p.mouse.down(); await p.mouse.move(knob.x + 27, knob.y - 60, { steps: 6 }); await p.mouse.up();
+  const knob = await (await p.$('.t-pot')).boundingBox();
+  await p.mouse.move(knob.x + knob.width / 2, knob.y + knob.height / 2); await p.mouse.down(); await p.mouse.move(knob.x + knob.width / 2, knob.y - 60, { steps: 6 }); await p.mouse.up();
   const pv = await B('b.potVolts[0]');
   check('board: knob drag raises POT4', pv > 2.5, pv);
-  await p.focus('.knob'); await p.keyboard.press('Home');
+  await p.focus('.t-pot'); await p.keyboard.press('Home');
   check('board: knob Home key -> 0 V', (await B('b.potVolts[0]')) === 0);
-  await p.dblclick('.knob');
+  await p.dblclick('.t-pot');
   check('board: knob double-click -> 1.65 V', Math.abs((await B('b.potVolts[0]')) - 1.65) < 0.01);
 
   // ---------------- files ----------------
@@ -304,12 +350,66 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   check('phone: Board tab', await vis('.bench-col') && !(await vis('.center')));
   await m.tap('.mtabs button >> text=Manual'); await sleep(200);
   check('phone: Manual tab', await vis('.rail'));
+  await m.tap('.mtabs button >> text=Board'); await sleep(200);
+  await m.tap('.conn-chip'); await m.tap('.conn-pop >> text=Connect for me'); await sleep(150);
+  check('phone: board can be wired', (await m.evaluate(() => window.__bench.wiring.cables.CNA)) === 'CNA2');
   await m.tap('.mtabs button >> text=Code');
   await m.tap('.toolbar .btn.primary'); await sleep(1200);
+  check('phone: Run jumps to the board', await vis('.bench-col'));
   await m.tap('.mtabs button >> text=Board'); await sleep(400);
-  check('phone: HELP shows on the board', await m.$$eval('.m-seg path[fill="#ff3d24"]', e => e.length) >= 10);
-  const kb2 = await (await m.$('.key >> nth=0')).boundingBox();
+  check('phone: HELP shows on the board', await m.$$eval('.t-seg path[fill="#ff3d24"]', e => e.length) >= 10);
   check('phone: no horizontal overflow', await m.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+
+
+  // ---------------- motors, on-board scope, reset button, offline ----------------
+  const q = await br.newPage({ viewport: { width: 1440, height: 900 } });
+  q.on('pageerror', e => errs.push('q: ' + e.message));
+  const QB = (code) => q.evaluate(`(() => { const c = window.__bench, b = c && c.board; return (${code}); })()`);
+  await q.goto(BASE + '#/exp/9/p1'); await sleep(600);
+  check('motors: 3D motor bench under the board', (await q.$('.motor-wrap .motor-bench')) !== null);
+  check('motors: harness shows CNA5 not connected before wiring', (await q.textContent('.motor-bench')).includes('not connected') || (await QB("Object.values(c.wiring.cables).includes('CNA5')")));
+  await q.click('.conn-chip'); await q.click('.conn-pop >> text=Unplug all'); await q.click('.conn-pop >> text=Connect for me');
+  await q.click('.toolbar .btn.primary'); await sleep(2500);
+  const lab1 = await q.getAttribute('.motor-bench', 'aria-label');
+  await sleep(800);
+  const lab2 = await q.getAttribute('.motor-bench', 'aria-label');
+  check('motors: stepper turns on the 3D motor', lab1 !== lab2 && /stepper at [1-9]/.test(lab2), lab1 + ' | ' + lab2);
+  await q.click('.panel-head .btn >> text=Motors'); await sleep(150);
+  check('motors: Motors button hides them', (await q.$('.motor-wrap')) === null);
+  await q.click('.panel-head .btn >> text=Motors'); await sleep(150);
+  check('motors: and shows them again', (await q.$('.motor-wrap')) !== null);
+  await q.goto(BASE + '#/exp/9/p2'); await sleep(500);
+  await q.click('.toolbar .btn.primary'); await sleep(2500);
+  check('motors: DC motor spins', /DC motor (clockwise|anticlockwise)/.test(await q.getAttribute('.motor-bench', 'aria-label')));
+  // reset button on the board
+  await q.click('.t-tact[aria-label="SW1 reset"]'); await sleep(300);
+  check('board: RST button resets the program', (await q.textContent('.status-pill')).includes('paused') && (await QB('c.state.simNs')) < 1e6);
+  // on-board oscilloscope for programs that need one
+  await q.goto(BASE + '#/exp/7/x3'); await sleep(500);
+  check('scope: oscilloscope shown under the board for waveform programs', (await q.$('.bench-scope canvas')) !== null);
+  await q.click('.conn-chip'); await q.click('.conn-pop >> text=Connect for me').catch(() => q.click('.conn-chip'));
+  await q.click('.toolbar .btn.primary'); await sleep(2500);
+  const bm = await q.textContent('.bench-scope .scope-side');
+  check('scope: on-board scope measures the 1 kHz sine', bm.includes('1.00 kHz'), bm.slice(0, 80));
+  await q.goto(BASE + '#/exp/6/p1'); await sleep(500);
+  check('scope: not shown for programs without waveforms', (await q.$('.bench-scope')) === null);
+  await q.click('.panel-head .btn >> text=Scope'); await sleep(150);
+  check('scope: Scope button opens it for any program', (await q.$('.bench-scope canvas')) !== null);
+  // offline: service worker caches the app; reload with the network cut
+  await q.goto(BASE + '#/'); await sleep(1500);
+  const swOk = await q.evaluate(async () => { const r = await navigator.serviceWorker.ready; return !!r.active; });
+  check("offline: service worker installed", swOk);
+  await q.goto(BASE + '#/exp/5/p1'); await sleep(1500);
+  await q.context().setOffline(true);
+  await q.reload(); await sleep(1500);
+  check('offline: site reloads with no network', (await q.$('.trainer2')) !== null);
+  await q.click('.toolbar .btn.primary'); await sleep(800);
+  check('offline: programs still build and run offline', (await q.textContent('.status-pill')).includes('running'));
+  await q.goto(BASE + '#/exp/2/p5'); await sleep(1000);
+  await q.click('.toolbar .btn.primary'); await sleep(400);
+  check('offline: assembly works offline', (await q.textContent('.status-pill')).includes('finished'));
+  await q.context().setOffline(false);
+  await q.close();
 
   const fails = results.filter(r => !r[1]);
   console.log(`\n${results.length - fails.length}/${results.length} passed`);

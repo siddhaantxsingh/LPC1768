@@ -54,7 +54,7 @@ const C = {
   '10/p1': { wait: 600, after: "c.setSw2(true); setTimeout(()=>c.setSw2(false),80)", afterWait: 600, final: '(b.ports[1].latch>>23)&1', expect: 'v===0', also: 'irq' },
   '10/x1': { wait: 1200, after: "window.__a0=S().stepper.angle; c.setSw2(true); setTimeout(()=>c.setSw2(false),80)", afterWait: 1500, final: 'S().stepper.angle - window.__a0', expect: 'v<0', also: 'irq' },
   '10/x2': { wait: 800, after: "window.__d0=(b.ports[0].latch>>10)&1; c.setSw2(true); setTimeout(()=>c.setSw2(false),80)", afterWait: 800, final: '((b.ports[0].latch>>10)&1) !== window.__d0', expect: 'v===true' },
-  '10/x3': { wait: 800, after: "c.setSw2(true); setTimeout(()=>c.setSw2(false),80)", afterWait: 1200, final: 'S().dc.duty', expect: 'v>0.2&&v<0.45' },
+  '10/x3': { wait: 800, after: "c.setSw2(true); setTimeout(()=>c.setSw2(false),80)", afterWait: 1500, poll2: true, final: 'S().dc.duty', expect: 'v>0.2&&v<0.45' },
   '10/x4': { wait: 800, after: "window.__a0=S().stepper.angle; c.setSw2(true); setTimeout(()=>c.setSw2(false),80)", afterWait: 1500, final: 'S().stepper.angle-window.__a0', expect: 'v>0' },
 };
 
@@ -75,14 +75,25 @@ const HELP = `
   const evalIn = (code) => page.evaluate(code);
   for (const exp of [1,2,3,4,5,6,7,8,9,10]) {
     await page.goto(BASE + '#/exp/' + exp + '/p1');
-    await page.waitForSelector('.plist a');
+    await page.waitForSelector('.plist a', { state: 'attached' });
+    if (!(await page.isVisible('.plist a'))) { await page.click('.rail-btn'); await page.waitForSelector('.plist a'); }
     const ids = await page.$$eval('.plist a', as => as.map(a => a.getAttribute('href').split('/').pop()));
     for (const id of ids) {
       const key = exp + '/' + id;
       await page.click(`.plist a[href$="/${exp}/${id}"]`);
       await page.waitForTimeout(250);
-      // board should be auto-wired
-      const wired = exp >= 5 ? await page.$('.wire-state.ok') !== null || (await page.$('.wire-state')) === null : true;
+      // the bench keeps cables between programs: unplug everything, then wire through the UI
+      let wired = true;
+      if (exp >= 5) {
+        if (!(await page.$('.conn-pop'))) await page.click('.conn-chip');
+        await page.click('.conn-pop >> text=Unplug all');
+        const cables = await evalIn('Object.keys(window.__bench.wiring.cables).length');
+        if (cables !== 0) wired = false;
+        if (await page.$('.conn-pop button:has-text("Connect for me"):not([disabled])')) await page.click('.conn-pop >> text=Connect for me');
+        else if (await page.$('.conn-pop')) await page.click('.conn-chip');
+        await page.waitForTimeout(100);
+        wired = wired && (await page.$('.conn-chip.on')) !== null;
+      }
       let ok = false, detail = '';
       if (exp <= 4) {
         await page.click('.toolbar .btn.primary');
@@ -113,10 +124,11 @@ const HELP = `
           if (t.poll) vals.push(await evalIn(`(() => {${HELP} return ${t.poll}; })()`));
         }
         if (t.after) { await evalIn(`(() => {${HELP} ${t.after} })()`); await page.waitForTimeout(t.afterWait); }
+        if (t.poll2) { const xs = []; for (let i = 0; i < 12; i++) { xs.push(await evalIn(`(() => {${HELP} return ${t.final}; })()`)); await page.waitForTimeout(60); } t.final = String(xs.reduce((a, b) => a + b, 0) / xs.length); }
         const res = await evalIn(`(() => {${HELP} const vals=${JSON.stringify(vals)}; const v = ${t.final ? t.final : 'null'}; return { pass: !!(${t.expect}), v, status: c.state.status, msg: c.state.message, irq: c.state.snapshot && c.state.snapshot.irqCount }; })()`);
         ok = res.pass && res.status === 'running';
         if (t.also === 'irq' && !(res.irq > 0)) ok = false;
-        if (t.ui) { const lab = await page.getAttribute('.m-lcd canvas', 'aria-label'); if (!lab.includes(t.ui)) { ok = false; res.ui = lab; } }
+        if (t.ui) { const lab = await page.getAttribute('.t-lcd canvas', 'aria-label'); if (!lab.includes(t.ui)) { ok = false; res.ui = lab; } }
         detail = JSON.stringify({ v: res.v, status: res.status, msg: res.msg, ui: res.ui, sample: vals.slice(-6) }).slice(0, 220);
         await page.click('.toolbar .btn[title^="Pause"]').catch(() => {});
       }

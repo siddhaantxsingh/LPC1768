@@ -53,7 +53,7 @@ function useDemo(): BoardSnapshot | null {
     const r = compile({ 'main.c': DEMO });
     if (!r.ok || !r.out) { console.warn(r.diagnostics); return; }
     const board = new Board();
-    board.rewire({ cables: { CNA: 'CNA2', CNB: 'CNB2', CNC: 'CNA1', CND: 'CNAD' }, jumpers: { JP5: true, JP16: true, JP18: true } });
+    board.rewire({ cables: { CNA: 'CNA2', CNB: 'CNB2', CNC: 'CNA1', CND: 'CNAD' }, jumpers: { JP5: true, JP16: true, JP18: true, JP7: false, JP8: false } });
     const s = new Session(r.out, board);
     board.setRate(3_000_000);
     let raf = 0, last = performance.now(), frame = 0;

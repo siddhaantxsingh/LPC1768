@@ -10,11 +10,20 @@ exercise — running on a simulated ALS LPC1768 trainer board, entirely in the b
 - **Experiments 5–10 (LPC1768 embedded C)** — a C compiler for the lab subset (structs, pointers,
   arrays, `switch`, interrupts, `sprintf`, multi-file projects with headers) using the CMSIS
   `LPC17xx.h` register layout, running on a bytecode VM with breakpoints and stepping.
-- **The trainer board** — LEDs LD2–LD10, 16×2 HD44780 LCD (4-bit mode), 4-digit multiplexed
-  7-segment display, 4×4 key matrix, SW2 / EINT2, buzzer (with sound), relay (with click),
-  stepper motor, DC motor, two potentiometers on the ADC, DAC, PWM, timers, SysTick, UART with a
-  serial terminal, and an oscilloscope. Peripherals only respond when the right FRC cables and
-  jumpers are connected, exactly as the manual's *Connections* section describes.
+- **The trainer board** — the ALS-SDA-ARMCTXM3-01 artwork with live parts on it: LEDs LD2–LD10,
+  16×2 HD44780 LCD (4-bit mode), 4-digit multiplexed 7-segment display, 4×4 key matrix, SW2 / EINT2,
+  RST, buzzer (with sound), relay (with click), two potentiometers on the ADC, DAC, PWM, timers,
+  SysTick and a UART with a serial terminal. The whole board stays on screen next to the code.
+- **Manual wiring** — click an FRC header (CNA, CNB, CNC, CND), then a socket (CNA1, CNA2, CNA5,
+  CNB1, CNB2, CNB3, CNAD) to plug a ribbon cable; click a cable to unplug it. Jumpers JP5, JP7,
+  JP8, JP16 and JP18 are shorted by clicking them. Parts only respond when wired as the manual's
+  *Connections* section says; a checklist shows what is still missing.
+- **Motors** — the stepper and DC motor are separate units below the board, wired to CNA5, drawn
+  in 3D and driven by the program.
+- **Oscilloscope** — shown under the board for waveform questions (PWM, DAC), with frequency,
+  duty-cycle and voltage measurements.
+- **Offline** — after the first visit the whole site is cached by a service worker and works with
+  no internet connection; it can also be installed as an app.
 
 ## Run it locally
 

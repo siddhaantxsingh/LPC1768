@@ -1,4 +1,4 @@
-import type { Wiring } from '../sim/board/wiring';
+import type { Wiring, Requirement, Jumper } from '../sim/board/wiring';
 
 const raw = import.meta.glob('./code/**/*', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const src = (name: string): string => {
@@ -45,8 +45,21 @@ export interface Experiment {
 
 const W = (cables: Wiring['cables'], jumpers: Partial<Wiring['jumpers']> = {}): Wiring => ({
   cables,
-  jumpers: { JP5: true, JP16: true, JP18: true, ...jumpers },
+  jumpers: { JP5: true, JP16: true, JP18: true, JP7: false, JP8: false, ...jumpers },
 });
+
+/** Cables and jumpers a program needs, as listed in the manual's Connections. */
+export function requirementFor(p: Program): Requirement | null {
+  if (p.lang !== 'c' || !p.wiring) return null;
+  const cables = Object.entries(p.wiring.cables) as Requirement['cables'];
+  const jumpers: Partial<Record<Jumper, boolean>> = {};
+  const devs = new Set(p.devices ?? []);
+  if (cables.some(([, s]) => s === 'CNAD')) { jumpers.JP16 = true; jumpers.JP5 = true; }
+  else if (devs.has('dac')) jumpers.JP5 = false;
+  if (devs.has('adc')) jumpers.JP18 = true;
+  if (devs.has('uart') || p.terminal === 3) { jumpers.JP7 = true; jumpers.JP8 = true; }
+  return { cables, jumpers };
+}
 
 const asm = (no: number, title: string, question: string, file: string, extra: Partial<Program> = {}): Program => ({
   id: 'p' + no, kind: 'program', no, title, question, lang: 'asm', files: { 'main.s': src(file) }, main: 'main.s', ...extra,

@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BenchController, BenchState, SPEEDS } from '../bench/controller';
-import { EXPERIMENTS, Experiment, Program, PLAYGROUND_ASM, PLAYGROUND_C, findProgram } from '../content/experiments';
+import { EXPERIMENTS, Experiment, Program, PLAYGROUND_ASM, PLAYGROUND_C, findProgram, requirementFor } from '../content/experiments';
 import { clearSaved, editedSet, loadSaved, pref, save, setPref } from '../bench/storage';
 import { href } from '../bench/router';
-import { emptyWiring, Wiring } from '../sim/board/wiring';
+import { applyRequirement, emptyWiring, missing, Requirement, Wiring } from '../sim/board/wiring';
 import { CodeEditor } from './Editor';
-import { BoardView, sameWiring } from './BoardView';
+import { TrainerBoard, BoardStage } from './TrainerBoard';
+import { MotorBench, MW, MH } from './MotorBench';
+import { Scope } from './Scope';
 import { CpuView } from './CpuView';
 import { Console, DockTab } from './Console';
 import {
-  IBuild, ICheck, IClose, ICopy, IDownload, IError, IInfo, IPanel, IPause, IPlay, IPlug, IPlus, IReset, IStepInto, IStepOut, IStepOver, IStop, IUndo, IWarn,
+  ICheck, IClose, ICopy, IDownload, IError, IFocus, IInfo, IPanel, IPause, IPlay, IPlug, IPlus, IReset, IStepInto, IStepOut, IStepOver, IStop, IUndo, IWarn, ITrash, IChevron,
 } from './icons';
 import { audio } from '../bench/audio';
 
@@ -46,13 +48,32 @@ export function Workbench({ expNo, progId, playground }: Props) {
   const [files, setFiles] = useState<Record<string, string>>(original);
   const [active, setActive] = useState(mainFile);
   const [bps, setBps] = useState<Record<string, Set<number>>>({});
-  const [wiring, setWiringState] = useState<Wiring>(prog?.wiring ?? emptyWiring());
+  // the bench keeps its cables between programs, like a real trainer on a lab desk
+  const [wiring, setWiringState] = useState<Wiring>(() => {
+    const w = pref<Wiring | null>('wiring', null);
+    const base = emptyWiring();
+    return w ? { cables: w.cables ?? {}, jumpers: { ...base.jumpers, ...(w.jumpers ?? {}) } } : base;
+  });
+  const wiringRef = useRef(wiring);
+  wiringRef.current = wiring;
+  const requirement: Requirement | null = prog ? requirementFor(prog) : null;
+  const missingNow = requirement ? missing(wiring, requirement) : [];
+  const [zoom, setZoom] = useState<'fit' | number>('fit');
+  const [boardMax, setBoardMax] = useState(false);
+  const [showReq, setShowReq] = useState(true);
+  const [connOpen, setConnOpen] = useState(false);
+  const [split, setSplit] = useState<number>(() => pref('split', 0.42));
+  const [warnRun, setWarnRun] = useState<string[] | null>(null);
+  const [showMotors, setShowMotors] = useState<boolean>(() => pref('motors', true));
+  const needsScope = !!prog && (!!prog.scope || !!prog.devices?.some(d => d === 'scope' || d === 'dac'));
+  const [scopeOn, setScopeOn] = useState<boolean>(needsScope);
+  useEffect(() => { setScopeOn(needsScope); }, [needsScope, storeId]);
   const [pressed, setPressed] = useState<Set<number>>(new Set());
   const [sw2, setSw2] = useState(false);
   const [pots, setPots] = useState<number[]>([1.65, 1.2]);
   const [dockTab, setDockTab] = useState<DockTab>('problems');
   const [dockH, setDockH] = useState<number>(() => pref('dockH', 230));
-  const [railOpen, setRailOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(() => (playground ?? prog?.lang) === 'asm' ? pref('railAsm', true) : pref('railC', false));
   const [mtab, setMtab] = useState<'brief' | 'code' | 'board'>('code');
   const [builtFrom, setBuiltFrom] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -72,13 +93,13 @@ export function Workbench({ expNo, progId, playground }: Props) {
     setActive(mainFile);
     setBps({});
     setBuiltFrom(null);
-    const w = prog?.wiring ?? emptyWiring();
-    setWiringState(w);
     setPressed(new Set());
-    ctl.load(lang, f, mainFile, w, prog?.speed ?? 1);
-    setDockTab(lang === 'asm' ? 'problems' : prog?.terminal !== undefined ? 'serial' : prog?.scope ? 'scope' : 'problems');
+    setWarnRun(null);
+    ctl.load(lang, f, mainFile, wiringRef.current, prog?.speed ?? 1);
+    setDockTab(lang === 'asm' ? 'problems' : prog?.terminal !== undefined ? 'serial' : 'problems');
     setMtab('code');
-    setRailOpen(false);
+    // the docked panel keeps its saved state; the tablet drawer always closes after navigating
+    setRailOpen(window.matchMedia('(max-width: 1080px)').matches ? false : lang === 'asm' ? pref('railAsm', true) : pref('railC', false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
@@ -98,17 +119,28 @@ export function Workbench({ expNo, progId, playground }: Props) {
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(t => (t === m ? null : t)), 1800); };
 
   // ---------- commands ----------
+  const preRun = () => {
+    if (lang !== 'c') return;
+    const req = prog ? requirementFor(prog) : null;
+    const miss = req ? missing(wiringRef.current, req) : [];
+    setWarnRun(miss.length ? miss : null);
+    if (window.matchMedia('(max-width: 820px)').matches) setMtab('board');
+  };
   const buildRun = useCallback(() => {
+    preRun();
     audio.resume();
     setBuiltFrom(JSON.stringify(ctl.files));
     ctl.buildAndRun();
-  }, [ctl]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctl, prog]);
   const run = useCallback(() => {
+    preRun();
     audio.resume();
     const key = JSON.stringify(ctl.files);
     if (builtFrom !== key || ctl.state.status === 'idle' || ctl.state.status === 'error' || ctl.state.status === 'halted') { setBuiltFrom(key); ctl.buildAndRun(); }
     else ctl.run();
-  }, [ctl, builtFrom]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctl, builtFrom, prog]);
   const step = useCallback((mode: 1 | 2 | 3) => {
     const key = JSON.stringify(ctl.files);
     if (builtFrom !== key || ctl.state.status === 'idle' || ctl.state.status === 'error') { setBuiltFrom(key); if (!ctl.build()) return; }
@@ -160,7 +192,26 @@ export function Workbench({ expNo, progId, playground }: Props) {
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
   }, [ctl, lang, commands]);
 
-  const setWiring = (w: Wiring) => { setWiringState(w); ctl.setWiring(w); };
+  const setWiring = (w: Wiring) => {
+    setWiringState(w); ctl.setWiring(w); setPref('wiring', w);
+    if (requirement && !missing(w, requirement).length) setWarnRun(null);
+  };
+  const connectForMe = () => { if (requirement) { setWiring(applyRequirement(wiring, requirement)); flash('Connected as the manual says'); } };
+  const clearCables = () => setWiring({ ...wiring, cables: {} });
+  const toggleRail = () => setRailOpen(o => { const n = !o; setPref(lang === 'asm' ? 'railAsm' : 'railC', n); return n; });
+
+  // ---------- code | board splitter ----------
+  const wbRef = useRef<HTMLDivElement>(null);
+  const splitDrag = useRef(false);
+  const onSplitDown = (e: React.PointerEvent) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); splitDrag.current = true; };
+  const onSplitMove = (e: React.PointerEvent) => {
+    if (!splitDrag.current || !wbRef.current) return;
+    const r = wbRef.current.getBoundingClientRect();
+    const left = r.left + (railOpen ? 280 : 0);
+    const f = (e.clientX - left) / (r.right - left);
+    setSplit(Math.max(0.22, Math.min(0.72, f)));
+  };
+  const onSplitUp = () => { splitDrag.current = false; setPref('split', split); };
   const toggleBp = (line: number) => {
     setBps(prev => {
       const cur = new Set(prev[active] ?? []);
@@ -230,11 +281,12 @@ export function Workbench({ expNo, progId, playground }: Props) {
   const execLine = st.loc && st.loc.file === active && (paused || st.status === 'error' || (lang === 'asm' && st.status === 'halted')) ? st.loc.line : null;
   const errorLine = st.errorLine && st.errorLine.file === active ? st.errorLine.line : null;
   const fileDiags = st.diagnostics.filter(d => d.file === active);
-  const wiredOk = !prog?.wiring || sameWiring(wiring, prog.wiring);
+  const wiredOk = missingNow.length === 0;
   const allProgs = exp ? [...exp.programs, ...exp.exercises] : [];
 
   return (
-    <div className={'wb' + (railOpen ? ' rail-open' : '')} data-mtab={mtab}>
+    <div ref={wbRef} className={'wb' + (railOpen ? ' rail-open' : ' rail-closed') + (boardMax ? ' board-max' : '') + (lang === 'asm' ? ' is-asm' : ' is-c')} data-mtab={mtab}
+      style={{ ['--cols' as any]: boardMax ? `${railOpen ? '280px' : '0px'} 0px 0px minmax(0, 1fr)` : `${railOpen ? '280px' : '0px'} minmax(320px, ${split}fr) 7px minmax(380px, ${1 - split}fr)` }}>
       <div className="mtabs" role="tablist">
         <button role="tab" aria-selected={mtab === 'brief'} onClick={() => setMtab('brief')}>Manual</button>
         <button role="tab" aria-selected={mtab === 'code'} onClick={() => setMtab('code')}>Code</button>
@@ -253,20 +305,20 @@ export function Workbench({ expNo, progId, playground }: Props) {
             <nav className="plist" aria-label="Programs">
               <h2><span>Programs</span><span>{exp.programs.length}</span></h2>
               {exp.programs.map(p => (
-                <a key={p.id} href={href.exp(exp.no, p.id)} aria-current={p.id === prog?.id ? 'page' : undefined} onClick={() => setRailOpen(false)}>
+                <a key={p.id} href={href.exp(exp.no, p.id)} aria-current={p.id === prog?.id ? 'page' : undefined} onClick={() => { if (window.matchMedia('(max-width: 1080px)').matches) setRailOpen(false); }}>
                   <span className="id">P{p.no}</span><span>{p.title}</span>
                   {edited.has(`e${exp.no}-${p.id}`) && <span className="edited" title="You have edited this program" />}
                 </a>
               ))}
               <h2><span>Exercises · solved</span><span>{exp.exercises.length}</span></h2>
               {exp.exercises.map(p => (
-                <a key={p.id} href={href.exp(exp.no, p.id)} aria-current={p.id === prog?.id ? 'page' : undefined} onClick={() => setRailOpen(false)}>
+                <a key={p.id} href={href.exp(exp.no, p.id)} aria-current={p.id === prog?.id ? 'page' : undefined} onClick={() => { if (window.matchMedia('(max-width: 1080px)').matches) setRailOpen(false); }}>
                   <span className="id">E{p.no}</span><span>{p.title}</span>
                   {edited.has(`e${exp.no}-${p.id}`) && <span className="edited" title="You have edited this program" />}
                 </a>
               ))}
             </nav>
-            {prog && <Brief prog={prog} wiredOk={wiredOk} onWire={() => prog.wiring && setWiring(prog.wiring)} />}
+            {prog && <Brief prog={prog} requirement={requirement} missingNow={missingNow} onWire={connectForMe} />}
           </>
         ) : (
           <div className="rail-head">
@@ -291,7 +343,7 @@ export function Workbench({ expNo, progId, playground }: Props) {
           </div>
         )}
         <div className="toolbar" onMouseDown={e => { if ((e.target as HTMLElement).closest('button')) e.preventDefault(); }}>
-          <button className="btn icon ghost" title="Show the experiment list" onClick={() => setRailOpen(o => !o)} style={{ display: 'none' }} data-rail-toggle><IPanel /></button>
+          <button className="btn icon ghost rail-btn" title={railOpen ? 'Hide the manual panel' : 'Show the manual panel (programs, algorithm, connections)'} aria-pressed={railOpen} onClick={toggleRail} data-rail-toggle><IPanel /></button>
           {running
             ? <button className="btn" onClick={commands.pause} title="Pause (F6)"><IPause />Pause</button>
             : <button className="btn primary" onClick={commands.run} title={`${dirty || !builtFrom ? 'Build and run' : 'Continue'} (F5)`}><IPlay />{paused && !dirty && builtFrom ? 'Continue' : lang === 'c' ? 'Build & run' : 'Assemble & run'}</button>}
@@ -350,32 +402,86 @@ export function Workbench({ expNo, progId, playground }: Props) {
         </div>
       </section>
 
+      <div className="splitter" role="separator" aria-orientation="vertical" aria-label="Resize code and board" onPointerDown={onSplitDown} onPointerMove={onSplitMove} onPointerUp={onSplitUp} onDoubleClick={() => { setSplit(0.42); setPref('split', 0.42); }} />
+
       {/* ---------------- bench ---------------- */}
       <section className="bench-col" aria-label={lang === 'c' ? 'Board' : 'CPU'}>
         <div className="panel-head">
           <h3>{lang === 'c' ? 'ALS LPC1768 trainer' : 'ARM7TDMI core'}</h3>
+          {lang === 'c' && requirement && (
+            <div className="conn-menu">
+              <button className={'chip conn-chip' + (wiredOk ? ' on' : ' need')} onClick={() => setConnOpen(o => !o)} aria-expanded={connOpen}>
+                {wiredOk ? <ICheck /> : <IWarn />}
+                Connections {requirement.cables.length + Object.keys(requirement.jumpers).length - missingNow.length}/{requirement.cables.length + Object.keys(requirement.jumpers).length}
+                <IChevron />
+              </button>
+              {connOpen && (
+                <div className="menu conn-pop" onMouseLeave={() => setConnOpen(false)}>
+                  <div className="group">Needed for this program</div>
+                  <ReqList requirement={requirement} wiring={wiring} />
+                  <label className="check" style={{ padding: '8px 10px 4px' }}><input type="checkbox" checked={showReq} onChange={e => setShowReq(e.target.checked)} /> Highlight what is missing on the board</label>
+                  <div style={{ display: 'flex', gap: 6, padding: '8px 10px 6px' }}>
+                    <button className="btn sm" onClick={() => { connectForMe(); setConnOpen(false); }} disabled={wiredOk}><IPlug />Connect for me</button>
+                    <button className="btn sm ghost" onClick={clearCables}><ITrash />Unplug all</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {lang === 'c' && !requirement && <button className="btn sm ghost" onClick={clearCables} title="Remove every ribbon cable"><ITrash />Unplug all</button>}
           <span className="grow" />
           {lang === 'c' && <span className="meta">t = {fmtTime(st.simNs)}{st.snapshot && st.snapshot.irqCount ? ` · ${st.snapshot.irqCount} IRQ` : ''}</span>}
+          {lang === 'c' && (
+            <div className="seg-ctl" role="group" aria-label="Board zoom">
+              <button aria-pressed={zoom === 'fit'} onClick={() => setZoom('fit')} title="Fit the whole board">Fit</button>
+              <button aria-pressed={zoom === 1} onClick={() => setZoom(1)} title="Actual size (scroll to move)">100%</button>
+            </div>
+          )}
+          {lang === 'c' && <button className="btn sm ghost" aria-pressed={showMotors} onClick={() => setShowMotors(m => { setPref('motors', !m); return !m; })} title="Show or hide the stepper and DC motor">Motors</button>}
+          {lang === 'c' && <button className="btn sm ghost" aria-pressed={scopeOn} onClick={() => setScopeOn(o => !o)} title="Show or hide the oscilloscope under the board">Scope</button>}
+          {lang === 'c' && <button className="btn sm ghost icon hide-sm" aria-pressed={boardMax} onClick={() => setBoardMax(m => !m)} title={boardMax ? 'Show the code again' : 'Give the board the whole width'}><IFocus /></button>}
           {lang === 'asm' && st.asm && <span className="meta">PC 0x{(st.asm.regs[15] >>> 0).toString(16).toUpperCase().padStart(8, '0')}</span>}
         </div>
         {lang === 'c' ? (
           <>
-            {prog?.wiring && !wiredOk && (
-              <div className="hints"><div className="hint"><IPlug /><span>The board is not wired the way this program expects. <a href="#" onClick={e => { e.preventDefault(); setWiring(prog.wiring!); }}>Wire as in the manual</a></span></div></div>
+            {warnRun && warnRun.length > 0 && (
+              <div className="run-warn"><IPlug /><span><b>Not connected:</b> {warnRun.join(' · ')}. The program is running, but those parts won't respond until you connect them.</span>
+                <button className="btn sm" onClick={connectForMe}>Connect for me</button><button className="btn sm ghost icon" onClick={() => setWarnRun(null)} aria-label="Dismiss"><IClose /></button></div>
             )}
-            <BoardView
-              snap={st.snapshot}
-              wiring={wiring}
-              recommended={prog?.wiring}
-              devices={prog?.devices}
-              pressed={pressed}
-              sw2={sw2}
-              pots={pots}
-              onWiring={setWiring}
-              onKey={(k, d) => { setPressed(p => { const n = new Set(p); if (d) n.add(k); else n.delete(k); return n; }); ctl.pressKey(k, d); }}
-              onSw2={d => { setSw2(d); ctl.setSw2(d); }}
-              onPot={(i, v) => { setPots(p => { const n = [...p]; n[i] = v; return n; }); ctl.setPot(i, v); }}
-            />
+            <div className="stage-wrap">
+              <BoardStage zoom={zoom}>
+                <TrainerBoard
+                  snap={st.snapshot}
+                  wiring={wiring}
+                  requirement={requirement}
+                  showReq={showReq}
+                  running={running}
+                  pressed={pressed}
+                  sw2={sw2}
+                  pots={pots}
+                  onWiring={setWiring}
+                  onKey={(k, d) => { setPressed(p => { const n = new Set(p); if (d) n.add(k); else n.delete(k); return n; }); ctl.pressKey(k, d); }}
+                  onSw2={d => { setSw2(d); ctl.setSw2(d); }}
+                  onPot={(i, v) => { setPots(p => { const n = [...p]; n[i] = v; return n; }); ctl.setPot(i, v); }}
+                  onReset={() => ctl.reset()}
+                />
+              </BoardStage>
+              {st.snapshot && st.snapshot.hints.length > 0 && (
+                <div className="hints floating">
+                  {st.snapshot.hints.slice(0, 3).map(h => <div key={h.id} className={'hint' + (h.level === 'info' ? ' info' : '')}>{h.level === 'info' ? <IInfo /> : <IWarn />}<span>{h.msg}</span></div>)}
+                </div>
+              )}
+            </div>
+            {showMotors && (
+              <div className="motor-wrap">
+                <BoardStage zoom="fit" w={MW} h={MH}><MotorBench snap={st.snapshot} connected={Object.values(wiring.cables).includes('CNA5')} /></BoardStage>
+              </div>
+            )}
+            {scopeOn && (
+              <div className="bench-scope">
+                <Scope board={ctl.board} running={running} defaults={prog?.scope ?? (prog?.devices?.includes('dac') ? { b: 'DAC', tb: 100 } : undefined)} />
+              </div>
+            )}
           </>
         ) : (
           <CpuView asm={st.asm} watch={prog?.watch} />
@@ -386,33 +492,30 @@ export function Workbench({ expNo, progId, playground }: Props) {
   );
 }
 
-function Brief({ prog, wiredOk, onWire }: { prog: Program; wiredOk: boolean; onWire: () => void }) {
+function ReqList({ requirement, wiring }: { requirement: Requirement; wiring: Wiring }) {
+  const items: [string, boolean][] = [
+    ...requirement.cables.map(([h, so]) => [`FRC cable ${h} → ${so}`, wiring.cables[h] === so] as [string, boolean]),
+    ...Object.entries(requirement.jumpers).map(([j, v]) => [`${v ? 'Short' : 'Open'} ${j}${j === 'JP18' ? ' (pins 2-3)' : ''}`, !!(wiring.jumpers as any)[j] === v] as [string, boolean]),
+  ];
+  if (!items.length) return <div className="req-row ok"><ICheck />No cables needed</div>;
+  return <>{items.map(([t, ok]) => <div key={t} className={'req-row' + (ok ? ' ok' : '')}>{ok ? <ICheck /> : <span className="req-dot" />}{t}</div>)}</>;
+}
+
+function Brief({ prog, requirement, missingNow, onWire }: { prog: Program; requirement: Requirement | null; missingNow: string[]; onWire: () => void }) {
+  const wiredOk = missingNow.length === 0;
   return (
     <div className="brief">
       {prog.kind === 'exercise' && <><h3>Question</h3><p>{prog.question}</p></>}
       {prog.algorithm && <><h3>Algorithm</h3><ol>{prog.algorithm.map((a, i) => <li key={i}>{a}</li>)}</ol></>}
-      {prog.connections && (
+      {requirement && (
         <>
           <h3>Connections</h3>
           <div className="wire-box">
-            <ul>{prog.connections.map((c, i) => <li key={i}>{c}</li>)}</ul>
-            {prog.wiring && (
-              <div className="row">
-                <span className={'wire-state ' + (wiredOk ? 'ok' : 'bad')}>{wiredOk ? <><ICheck />Board wired</> : <><IWarn />Not wired yet</>}</span>
-                {!wiredOk && <button className="btn sm" onClick={onWire}><IPlug />Wire it</button>}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-      {!prog.connections && prog.wiring && Object.keys(prog.wiring.cables).length > 0 && (
-        <>
-          <h3>Connections</h3>
-          <div className="wire-box">
-            <ul>{Object.entries(prog.wiring.cables).map(([h, s]) => <li key={h}>FRC cable {h} → {s}</li>)}{prog.wiring.jumpers.JP5 === false && <li>Open JP5</li>}</ul>
+            {prog.connections && <ul>{prog.connections.map((c, i) => <li key={i}>{c}</li>)}</ul>}
+            <div className="req-list"><ReqList requirement={requirement} wiring={wiringFromReqView(requirement, missingNow)} /></div>
             <div className="row">
-              <span className={'wire-state ' + (wiredOk ? 'ok' : 'bad')}>{wiredOk ? <><ICheck />Board wired</> : <><IWarn />Not wired yet</>}</span>
-              {!wiredOk && <button className="btn sm" onClick={onWire}><IPlug />Wire it</button>}
+              <span className={'wire-state ' + (wiredOk ? 'ok' : 'bad')}>{wiredOk ? <><ICheck />All connected</> : <><IWarn />Connect these on the board</>}</span>
+              {!wiredOk && <button className="btn sm ghost" onClick={onWire} title="Plug the cables and set the jumpers for me"><IPlug />Connect for me</button>}
             </div>
           </div>
         </>
@@ -422,6 +525,17 @@ function Brief({ prog, wiredOk, onWire }: { prog: Program; wiredOk: boolean; onW
       {prog.notes && <><h3>Notes</h3>{prog.notes.map((n, i) => <div key={i} className="callout note">{n}</div>)}</>}
     </div>
   );
+}
+
+/** Rebuild a wiring view from the missing list so ReqList can tick items. */
+function wiringFromReqView(r: Requirement, miss: string[]): Wiring {
+  const w = emptyWiring();
+  for (const [h, so] of r.cables) if (!miss.includes(`${h} → ${so}`)) w.cables[h] = so;
+  for (const [j, v] of Object.entries(r.jumpers) as [keyof Wiring['jumpers'], boolean][]) {
+    const label = v ? `short ${j}${j === 'JP18' ? ' (2-3)' : ''}` : `open ${j}`;
+    (w.jumpers as any)[j] = miss.includes(label) ? !v : v;
+  }
+  return w;
 }
 
 function StatusPill({ st, lang }: { st: BenchState; lang: string }) {

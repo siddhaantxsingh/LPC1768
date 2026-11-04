@@ -95,6 +95,8 @@ class Uart {
   rxNextAt = 0;
   txBusyUntil = 0;        // shift register finishes sending
   thrEmptyAt = 0;         // holding register hands its byte to the shift register
+  txActivity = -1e12;     // time of the last character sent / received (for the TX/RX LEDs)
+  rxActivity = -1e12;
   threPending = false;
   threArmAt = -1;
   out = '';
@@ -120,6 +122,8 @@ export interface BoardSnapshot {
   hints: Hint[];
   connected: Partial<Record<Socket, boolean>>;
   irqCount: number;
+  uartTx: boolean;
+  uartRx: boolean;
 }
 
 export class Board implements Bus {
@@ -498,6 +502,8 @@ export class Board implements Bus {
   /** A character typed in the terminal: it reaches the RX FIFO one character-time later, like a real serial line. */
   uartReceive(u: number, ch: number) {
     const ua = this.uarts[u];
+    if (u === 3 && !this.wiring.jumpers.JP8) { this.hint('jp8', 'JP8 is open, so characters from the PC never reach RXD3. Short JP7 and JP8.'); return; }
+    ua.rxActivity = this.ns();
     const now = this.ns();
     if (!ua.rxLine.length) ua.rxNextAt = Math.max(ua.rxNextAt, now) + this.uartCharNs(u);
     ua.rxLine.push(ch & 0xff);
@@ -1002,7 +1008,9 @@ export class Board implements Bus {
         if (dlab) { ua.dll = v & 0xff; return; }
         {
           const ch = v & 0xff;
-          ua.out += String.fromCharCode(ch);
+          ua.txActivity = this.ns();
+          if (u === 3 && !this.wiring.jumpers.JP7) this.hint('jp7', 'UART3 is transmitting but JP7 is open, so nothing reaches the PC. Short JP7 and JP8.');
+          else ua.out += String.fromCharCode(ch);
           if (ua.out.length > 20000) ua.out = ua.out.slice(-16000);
           ua.totalTx++;
           ua.threPending = false;
@@ -1184,6 +1192,8 @@ export class Board implements Bus {
       hints: [...this.hints.values()],
       connected: Object.fromEntries((Object.keys(this.sockPin) as Socket[]).map(k => [k, true])),
       irqCount: this.irqCount,
+      uartTx: t - Math.max(this.uarts[3].txActivity, this.uarts[0].txActivity) < 60e6,
+      uartRx: t - Math.max(this.uarts[3].rxActivity, this.uarts[0].rxActivity) < 60e6,
     };
     // reset frame accumulators
     this.accLed.fill(0); this.accSeg.forEach(a => a.fill(0));
