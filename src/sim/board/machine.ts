@@ -91,12 +91,15 @@ class TimerCore {
 class Uart {
   dll = 1; dlm = 0; lcr = 0; ier = 0; fcr = 0; scr = 0; fdr = 0x10; ter = 0x80; mcr = 0;
   rx: number[] = [];
-  txBusyUntil = 0;
+  rxLine: number[] = [];   // characters still travelling down the wire
+  rxNextAt = 0;
+  txBusyUntil = 0;        // shift register finishes sending
+  thrEmptyAt = 0;         // holding register hands its byte to the shift register
   threPending = false;
   threArmAt = -1;
   out = '';
   totalTx = 0;
-  reset() { this.dll = 1; this.dlm = 0; this.lcr = 0; this.ier = 0; this.fcr = 0; this.rx = []; this.txBusyUntil = 0; this.threPending = false; this.threArmAt = -1; }
+  reset() { this.dll = 1; this.dlm = 0; this.lcr = 0; this.ier = 0; this.fcr = 0; this.rx = []; this.rxLine = []; this.rxNextAt = 0; this.txBusyUntil = 0; this.thrEmptyAt = 0; this.threPending = false; this.threArmAt = -1; }
 }
 
 export interface Hint { id: string; msg: string; level: 'info' | 'warn' }
@@ -258,6 +261,7 @@ export class Board implements Bus {
     this.hints.clear();
     this.stdout = '';
     this.baseNs = 0; this.baseOps = 0;
+    this.lastSyncNs = 0;
     this.lastOut = [0, 0, 0, 0, 0]; this.lastDrv = [0, 0, 0, 0, 0];
     this.integT = 0; this.frameT = 0;
     this.accLed.fill(0); this.accSeg.forEach(a => a.fill(0));
@@ -491,9 +495,12 @@ export class Board implements Bus {
     this.checkInputs();
   }
   setSw2(down: boolean) { this.sw2 = down; this.checkInputs(); }
+  /** A character typed in the terminal: it reaches the RX FIFO one character-time later, like a real serial line. */
   uartReceive(u: number, ch: number) {
     const ua = this.uarts[u];
-    if (ua.rx.length < 16) ua.rx.push(ch & 0xff);
+    const now = this.ns();
+    if (!ua.rxLine.length) ua.rxNextAt = Math.max(ua.rxNextAt, now) + this.uartCharNs(u);
+    ua.rxLine.push(ch & 0xff);
     this.flagIrq();
   }
 
@@ -601,6 +608,11 @@ export class Board implements Bus {
         ua.threArmAt = -1;
         if (ua.ier & 2) { ua.threPending = true; this.flagIrq(); }
       }
+      while (ua.rxLine.length && t >= ua.rxNextAt) {
+        const ch = ua.rxLine.shift()!;
+        if (ua.rx.length < 16) ua.rx.push(ch); // a full FIFO overruns, as on the real UART
+        if (ua.rxLine.length) ua.rxNextAt += this.uartCharNs(u);
+      }
       if (ua.rx.length && (ua.ier & 1)) this.flagIrq();
     }
     // adc
@@ -630,7 +642,10 @@ export class Board implements Bus {
       const next = this.systick.startNs + (this.systick.wrapsSeen + 1) * period;
       best = Math.min(best, Math.max(0, next - t));
     }
-    this.uarts.forEach((ua, u) => { if (ua.threArmAt >= 0 && this.nvicEnabled.has(5 + u)) best = Math.min(best, Math.max(0, ua.threArmAt - t)); });
+    this.uarts.forEach((ua, u) => {
+      if (ua.threArmAt >= 0 && this.nvicEnabled.has(5 + u)) best = Math.min(best, Math.max(0, ua.threArmAt - t));
+      if (ua.rxLine.length) best = Math.min(best, Math.max(0, ua.rxNextAt - t));
+    });
     if (this.adc.convEndNs >= 0 && this.nvicEnabled.has(22)) best = Math.min(best, Math.max(0, this.adc.convEndNs - t));
     return best;
   }
@@ -969,8 +984,8 @@ export class Board implements Bus {
       case 0x0c: return ua.lcr;
       case 0x10: return ua.mcr;
       case 0x14: {
-        const thre = this.ns() >= ua.txBusyUntil;
-        return (ua.rx.length ? 1 : 0) | (thre ? 0x60 : 0);
+        const now = this.ns();
+        return (ua.rx.length ? 1 : 0) | (now >= ua.thrEmptyAt ? 0x20 : 0) | (now >= ua.txBusyUntil ? 0x40 : 0);
       }
       case 0x1c: return ua.scr;
       case 0x28: return ua.fdr;
@@ -992,8 +1007,11 @@ export class Board implements Bus {
           ua.totalTx++;
           ua.threPending = false;
           const now = this.ns();
-          ua.txBusyUntil = Math.max(now, ua.txBusyUntil) + this.uartCharNs(u);
-          ua.threArmAt = ua.txBusyUntil;
+          // THR -> shift register as soon as the shifter is free; THRE follows one bit later
+          const start = Math.max(now, ua.txBusyUntil);
+          ua.txBusyUntil = start + this.uartCharNs(u);
+          ua.thrEmptyAt = start + this.uartCharNs(u) / 10;
+          ua.threArmAt = ua.thrEmptyAt;
           this.onUartTx(u, ch);
           if (!((this.sc.pconp >> [3, 4, 24, 25][u]) & 1)) this.hint('uartpower' + u, `UART${u} is used but not powered — set bit ${[3, 4, 24, 25][u]} of LPC_SC->PCONP.`);
         }
@@ -1003,7 +1021,7 @@ export class Board implements Bus {
         {
           const was = ua.ier;
           ua.ier = v & 0x37f;
-          if (!(was & 2) && (v & 2) && this.ns() >= ua.txBusyUntil) ua.threArmAt = this.ns() + this.uartCharNs(u);
+          if (!(was & 2) && (v & 2) && this.ns() >= ua.thrEmptyAt) ua.threArmAt = this.ns() + this.uartCharNs(u);
           this.flagIrq();
         }
         return;

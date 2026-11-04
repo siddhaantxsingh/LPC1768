@@ -97,8 +97,11 @@ export class Session {
   runOps(n: number): StopReason {
     let left = n;
     let r: StopReason = 'budget';
+    const nsPerOp = 1e9 / this.board.opsRate;
     while (left > 0) {
-      const chunk = Math.min(left, 5000);
+      // stop at the next peripheral event (timer IRQ, UART character…) like advance() does
+      const next = this.board.nextEventNs();
+      const chunk = Math.max(1, Math.min(left, 5000, next === Infinity ? 5000 : Math.ceil(Math.max(next, nsPerOp * 20) / nsPerOp)));
       r = this.vm.run(chunk);
       this.board.sync();
       left -= chunk;

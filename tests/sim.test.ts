@@ -105,6 +105,9 @@ describe('Experiment 5–10 manual programs', () => {
     s.runOps(20000);
     for (const ch of 'MES') { b.uartReceive(3, ch.charCodeAt(0)); s.runOps(20000); }
     expect(b.uarts[3].out).toBe('MES');
+    for (const ch of ' burst of text') b.uartReceive(3, ch.charCodeAt(0)); // pasted all at once
+    s.runOps(400000);
+    expect(b.uarts[3].out).toBe('MES burst of text');
   });
   it('E9 P1 turns the stepper one revolution', () => {
     const { b, s } = boot('e9p1_stepper.c', { CNA: 'CNA5' });
@@ -219,5 +222,22 @@ describe('ARM7 assembly', () => {
       expect(r.ok, f).toBe(true);
       expect(new ArmCpu(r).run(200000), f).toBe('halt');
     }
+  });
+});
+
+describe('board reuse between programs', () => {
+  it('timers keep working after a previous program ran for a while', () => {
+    const first = compile({ 'main.c': rd('e5p1_blink.c') });
+    const b = new Board();
+    b.rewire({ cables: {}, jumpers: { JP5: false, JP16: true, JP18: true } });
+    const s1 = new Session(first.out!, b);
+    s1.advance(3e9); // 3 s of simulated time
+    const r = compile({ 'main.c': rd('ex/e7x2.c') });
+    const s2 = new Session(r.out!, b); // same board, like switching programs in the UI
+    s2.runOps(400000);
+    const vs = new Set<number>();
+    for (let i = 1; i < 40; i++) vs.add(+b.dacV[(b.dacHead - i) & (b.dacN - 1)].toFixed(2));
+    expect(vs.has(0)).toBe(true);
+    expect(vs.has(3.3)).toBe(true);
   });
 });

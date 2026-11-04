@@ -41,6 +41,8 @@ export function Workbench({ expNo, progId, playground }: Props) {
 
   const ctl = useController();
   const st = useBenchState(ctl);
+  // read-only handle for automated end-to-end tests
+  useEffect(() => { (window as any).__bench = ctl; }, [ctl]);
   const [files, setFiles] = useState<Record<string, string>>(original);
   const [active, setActive] = useState(mainFile);
   const [bps, setBps] = useState<Record<string, Set<number>>>({});

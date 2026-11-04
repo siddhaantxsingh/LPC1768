@@ -91,6 +91,8 @@ export class BenchController {
     this.session = null;
     this.cpu = null;
     this.setWiring(wiring ?? emptyWiring(), false);
+    this.board.keys.clear();
+    this.board.sw2 = false;
     this.board.reset();
     this.board.vm = null;
     this.speed = speed;
