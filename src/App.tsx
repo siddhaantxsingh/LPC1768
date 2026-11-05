@@ -5,7 +5,7 @@ import { Home } from './ui/Home';
 const Workbench = lazy(() => import('./ui/Workbench').then(m => ({ default: m.Workbench })));
 import { ChipMark, IChevron, IHelp, IMoon, IMute, ISound, ISun } from './ui/icons';
 import { audio } from './bench/audio';
-import { trackPage } from './bench/analytics';
+import { trackPage, trackStudent } from './bench/analytics';
 
 type Theme = 'light' | 'dark';
 
@@ -22,6 +22,8 @@ export function App() {
     const meta = document.querySelectorAll('meta[name="theme-color"]');
     meta.forEach(m => m.setAttribute('content', theme === 'dark' ? '#0e0f0e' : '#f2efe8'));
   }, [theme]);
+
+  useEffect(() => { trackStudent(); }, []);
 
   useEffect(() => {
     const exp = route.page === 'exp' ? EXPERIMENTS.find(e => e.no === route.exp) : null;
